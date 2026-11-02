@@ -84,9 +84,18 @@ PHOTOS = {
 
 
 # ── Trader picture uploads (Cloudinary) ──────────────────────
-# Render's Environment has CLOUDINARY_URL = cloudinary://KEY:SECRET@dcostjy6h
-# The cloudinary library reads it by itself.
-CLOUDINARY_ON = bool(os.environ.get('CLOUDINARY_URL'))
+# Render's Environment has either:
+#   CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET  (same as Carcraaft)
+#   or one CLOUDINARY_URL = cloudinary://KEY:SECRET@dcostjy6h (the library reads that by itself)
+if os.environ.get('CLOUDINARY_API_KEY') and os.environ.get('CLOUDINARY_API_SECRET'):
+    cloudinary.config(
+        cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME', 'dcostjy6h').strip(),
+        api_key=os.environ['CLOUDINARY_API_KEY'].strip(),
+        api_secret=os.environ['CLOUDINARY_API_SECRET'].strip(),
+        secure=True,
+    )
+CLOUDINARY_ON = bool(os.environ.get('CLOUDINARY_URL') or
+                     (os.environ.get('CLOUDINARY_API_KEY') and os.environ.get('CLOUDINARY_API_SECRET')))
 app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024   # refuse uploads bigger than 12 MB
 ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif'}
 
