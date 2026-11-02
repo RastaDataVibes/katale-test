@@ -22,6 +22,18 @@
           {% if vendor.phone %}<span>{{ icon('phone', 16) }} {{ vendor.phone }}</span>{% endif %}
         </div>
         {% if vendor.description %}<p class="shop-desc">{{ vendor.description }}</p>{% endif %}
+        {% if quote.known %}
+          <div class="quote-box {{ 'ok' if quote.reaches else 'far' }}">
+            {{ icon('bike', 18) }}
+            {% if quote.reaches %}
+              <span><strong>{{ '%.1f'|format(quote.km) }} km away</strong> · Delivery to you {{ quote.fee|ugx }}</span>
+            {% else %}
+              <span><strong>Too far to deliver to you.</strong> You are {{ '%.1f'|format(quote.km) }} km away; this shop delivers up to {{ '%g'|format(vendor.delivery_radius_km) }} km.</span>
+            {% endif %}
+          </div>
+        {% elif not customer_loc %}
+          <a class="quote-box" href="{{ url_for('set_location', next=request.path) }}">{{ icon('pin', 18) }} <span><strong>Set your location</strong> to see the delivery price</span></a>
+        {% endif %}
         <div style="margin-top:10px">
           {% if vendor.is_open %}<span class="tag">{{ icon('check', 14) }} Open for orders</span>{% else %}<span class="tag off">Closed right now</span>{% endif %}
         </div>

@@ -64,6 +64,9 @@
       <h2>Open now</h2>
       {% if featured %}<a href="{{ url_for('shops') }}" class="link-more">See all {{ icon('arrow-right', 16) }}</a>{% endif %}
     </div>
+    {% if not customer_loc %}
+      <a class="loc-nudge" href="{{ url_for('set_location') }}">{{ icon('pin', 20) }} <span><strong>Set your delivery location</strong> to see shops that deliver to you, nearest first.</span> {{ icon('chevron-right', 18) }}</a>
+    {% endif %}
     {% if featured %}
       <div class="grid">
         {% for v in featured %}{% include "_shop_card.html" %}{% endfor %}
@@ -71,7 +74,11 @@
     {% else %}
       <div class="empty">
         <span class="empty-ico">{{ icon('shop', 28) }}</span>
-        <p>No shops are open yet. Be one of the first traders on {{ site_name }}.</p>
+        {% if too_far %}
+          <p>No open shops deliver to {{ customer_loc.label }} yet. {{ too_far }} shop{{ '' if too_far == 1 else 's' }} {{ 'is' if too_far == 1 else 'are' }} too far away.</p>
+        {% else %}
+          <p>No shops are open yet. Be one of the first traders on {{ site_name }}.</p>
+        {% endif %}
         <a class="btn" href="{{ url_for('vendor_apply') }}">Open your shop</a>
       </div>
     {% endif %}

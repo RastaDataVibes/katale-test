@@ -1,0 +1,144 @@
+{#
+  A map where people choose a spot: "Use my location", search for a place,
+  or drag the pin. It fills in hidden lat / lng boxes for the form, and
+  (optionally) an address box with the place name.
+
+  Use it inside a <form>:
+    {% from "_map_picker.html" import map_picker %}
+    {{ map_picker(lat, lng, address_input_id='delivery_address') }}
+
+  Maps are from OpenStreetMap: free, no key needed.
+#}
+{% from "_icons.html" import icon %}
+{% macro map_picker(lat=None, lng=None, address_input_id=None, height=320, hint='Drag the pin to the exact spot') -%}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<div class="map-picker" data-address-input="{{ address_input_id or '' }}"
+     data-lat="{{ lat if lat is not none else '' }}" data-lng="{{ lng if lng is not none else '' }}"
+     data-default-lat="{{ kampala[0] }}" data-default-lng="{{ kampala[1] }}">
+  <div class="mp-tools">
+    <button type="button" class="btn btn-dark btn-small mp-locate">{{ icon('pin', 16) }} Use my location</button>
+    <div class="mp-search">
+      {{ icon('search', 16) }}
+      <input type="text" class="mp-search-input" placeholder="Search a place, e.g. Ntinda" autocomplete="off" aria-label="Search a place">
+      <div class="mp-results" hidden></div>
+    </div>
+  </div>
+  <div class="mp-map" style="height:{{ height }}px"></div>
+  <p class="mp-hint">{{ icon('info', 15) }} <span>{{ hint }}</span></p>
+  <input type="hidden" name="lat" class="mp-lat" value="{{ lat if lat is not none else '' }}">
+  <input type="hidden" name="lng" class="mp-lng" value="{{ lng if lng is not none else '' }}">
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+(function () {
+  document.querySelectorAll('.map-picker:not([data-ready])').forEach(function (box) {
+    box.setAttribute('data-ready', '1');
+    var latIn = box.querySelector('.mp-lat'), lngIn = box.querySelector('.mp-lng');
+    var hint = box.querySelector('.mp-hint span');
+    var addrId = box.dataset.addressInput, addrIn = addrId ? document.getElementById(addrId) : null;
+    var hasPoint = box.dataset.lat !== '';
+    var start = hasPoint ? [parseFloat(box.dataset.lat), parseFloat(box.dataset.lng)]
+                         : [parseFloat(box.dataset.defaultLat), parseFloat(box.dataset.defaultLng)];
+
+    var map = L.map(box.querySelector('.mp-map'), { scrollWheelZoom: false }).setView(start, hasPoint ? 16 : 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    var pinIcon = L.divIcon({ className: 'mp-pin', html: '<span></span>', iconSize: [34, 44], iconAnchor: [17, 42] });
+    var marker = L.marker(start, { draggable: true, icon: pinIcon }).addTo(map);
+
+    // Put the pin somewhere: save the numbers and look up the place name
+    var lookupTimer;
+    function setPoint(lat, lng, zoom, label) {
+      marker.setLatLng([lat, lng]);
+      if (zoom) map.setView([lat, lng], zoom);
+      latIn.value = lat.toFixed(6);
+      lngIn.value = lng.toFixed(6);
+      box.classList.add('mp-set');
+      hint.textContent = 'Pin set. Drag it if it is not exactly right.';
+      if (label && addrIn) { addrIn.value = label; return; }
+      clearTimeout(lookupTimer);
+      lookupTimer = setTimeout(function () { reverseLookup(lat, lng); }, 600);
+    }
+    function reverseLookup(lat, lng) {
+      if (!addrIn) return;
+      fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&lat=' + lat + '&lon=' + lng)
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d && d.display_name) addrIn.value = d.display_name.replace(/, Uganda$/, ''); })
+        .catch(function () {});
+    }
+
+    marker.on('dragend', function () { var p = marker.getLatLng(); setPoint(p.lat, p.lng); });
+    map.on('click', function (e) { setPoint(e.latlng.lat, e.latlng.lng); });
+
+    // "Use my location"
+    box.querySelector('.mp-locate').addEventListener('click', function () {
+      if (!navigator.geolocation) { hint.textContent = 'Your browser cannot share your location. Search or drag the pin instead.'; return; }
+      hint.textContent = 'Finding you…';
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        setPoint(pos.coords.latitude, pos.coords.longitude, 17);
+        if (pos.coords.accuracy > 150) hint.textContent = 'Found you roughly. Drag the pin to your exact spot.';
+      }, function () {
+        hint.textContent = 'Could not get your location. Search for a place or drag the pin instead.';
+      }, { enableHighAccuracy: true, timeout: 12000 });
+    });
+
+    // Search a place (inside Uganda)
+    var sIn = box.querySelector('.mp-search-input'), results = box.querySelector('.mp-results'), sTimer;
+    sIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+    sIn.addEventListener('input', function () {
+      clearTimeout(sTimer);
+      var q = sIn.value.trim();
+      if (q.length < 3) { results.hidden = true; return; }
+      sTimer = setTimeout(function () {
+        fetch('https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=ug&q=' + encodeURIComponent(q))
+          .then(function (r) { return r.json(); })
+          .then(function (list) {
+            results.innerHTML = '';
+            if (!list.length) { results.innerHTML = '<div class="mp-none">No places found</div>'; }
+            list.forEach(function (p) {
+              var b = document.createElement('button');
+              b.type = 'button';
+              b.textContent = p.display_name.replace(/, Uganda$/, '');
+              b.addEventListener('click', function () {
+                results.hidden = true; sIn.value = '';
+                setPoint(parseFloat(p.lat), parseFloat(p.lon), 17, b.textContent);
+              });
+              results.appendChild(b);
+            });
+            results.hidden = false;
+          }).catch(function () {});
+      }, 450);
+    });
+    document.addEventListener('click', function (e) { if (!box.querySelector('.mp-search').contains(e.target)) results.hidden = true; });
+
+    if (hasPoint) box.classList.add('mp-set');
+  });
+})();
+</script>
+{%- endmacro %}
+
+{# A small map that only shows pins (for order pages) #}
+{% macro map_view(points, height=220) -%}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<div class="map-view" style="height:{{ height }}px" data-points='{{ points|tojson }}'></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+(function () {
+  document.querySelectorAll('.map-view:not([data-ready])').forEach(function (el) {
+    el.setAttribute('data-ready', '1');
+    var pts = JSON.parse(el.dataset.points).filter(function (p) { return p.lat !== null; });
+    if (!pts.length) { el.style.display = 'none'; return; }
+    var map = L.map(el, { scrollWheelZoom: false, dragging: !L.Browser.mobile });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+    var group = [];
+    pts.forEach(function (p) {
+      var icon = L.divIcon({ className: 'mp-pin ' + (p.kind || ''), html: '<span></span>', iconSize: [34, 44], iconAnchor: [17, 42] });
+      group.push(L.marker([p.lat, p.lng], { icon: icon }).addTo(map).bindTooltip(p.label || '', { direction: 'top', offset: [0, -38] }).getLatLng());
+    });
+    if (group.length === 1) map.setView(group[0], 16); else map.fitBounds(L.latLngBounds(group), { padding: [40, 40] });
+  });
+})();
+</script>
+{%- endmacro %}

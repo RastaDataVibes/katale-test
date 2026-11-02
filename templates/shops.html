@@ -17,6 +17,11 @@
         <a class="chip {% if category == c %}active{% endif %}" href="{{ url_for('shops', category=c, q=q) }}">{{ category_icon(c, 16) }} {{ c }}</a>
       {% endfor %}
     </div>
+    {% if not customer_loc %}
+      <a class="loc-nudge" href="{{ url_for('set_location', next=request.full_path) }}">{{ icon('pin', 20) }} <span><strong>Set your delivery location</strong> to see only the shops that deliver to you, nearest first.</span> {{ icon('chevron-right', 18) }}</a>
+    {% elif too_far %}
+      <p class="muted" style="margin:-8px 0 16px">{{ icon('info', 15) }} Showing shops that deliver to {{ customer_loc.label }}. {{ too_far }} more {{ 'is' if too_far == 1 else 'are' }} too far away.</p>
+    {% endif %}
     {% if q %}<p class="muted" style="margin:-8px 0 16px">{{ vendors|length }} result{{ '' if vendors|length == 1 else 's' }} for "{{ q }}"</p>{% endif %}
     {% if vendors %}
       <div class="grid">{% for v in vendors %}{% include "_shop_card.html" %}{% endfor %}</div>

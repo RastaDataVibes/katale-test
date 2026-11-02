@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}My shop | {{ site_name }}{% endblock %}
 {% block content %}
 <section>
@@ -11,11 +12,18 @@
       </div>
       <div class="actions" style="margin:0">
         <a class="btn btn-light" href="{{ url_for('shop_detail', slug=vendor.slug) }}">View shop page</a>
+        <a class="btn btn-outline" href="{{ url_for('vendor_settings') }}">{{ icon('settings', 16) }} Shop settings</a>
         <form action="{{ url_for('vendor_toggle_open') }}" method="POST">
           <button class="btn" type="submit">{{ 'Close shop' if vendor.is_open else 'Open shop' }}</button>
         </form>
       </div>
     </div>
+
+    {% if not vendor.has_location %}
+      <a class="loc-nudge warn" href="{{ url_for('vendor_settings') }}" style="margin-top:20px">{{ icon('pin', 20) }} <span><strong>Put your shop on the map.</strong> Until you do, customers can't see how far you are and your delivery price can't be worked out.</span> {{ icon('chevron-right', 18) }}</a>
+    {% else %}
+      <p class="muted" style="margin-top:14px">{{ icon('bike', 15) }} You deliver up to {{ '%g'|format(vendor.delivery_radius_km) }} km · {{ vendor.delivery_base_fee|ugx }} + {{ vendor.delivery_per_km|ugx }} per km</p>
+    {% endif %}
 
     <h2 style="margin-top:36px">Active orders</h2>
     {% for o in active %}
@@ -25,8 +33,15 @@
           <span class="tag warn">{{ o.status_label }}</span>
         </div>
         <p>{% for i in o.items %}{{ i.quantity }} &times; {{ i.name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
-        <p class="muted">{{ o.total|ugx }} &middot; {{ payment_methods.get(o.payment_method) }} &middot; {{ o.delivery_address }} &middot; {{ o.phone }}</p>
+        <p class="muted">{{ o.total|ugx }} (incl. delivery {{ o.delivery_fee|ugx }}) &middot; {{ payment_methods.get(o.payment_method) }}</p>
+        <p class="muted">{{ icon('pin', 15) }} {{ o.delivery_address }}{% if o.distance_km %} &middot; {{ '%.1f'|format(o.distance_km) }} km{% endif %}</p>
+        {% if o.delivery_landmark %}<p class="muted">Landmark: {{ o.delivery_landmark }}</p>{% endif %}
         {% if o.notes %}<p class="muted">Note: {{ o.notes }}</p>{% endif %}
+        <div class="contact-row">
+          {% if o.maps_link %}<a class="btn btn-dark btn-small" href="{{ o.maps_link }}" target="_blank" rel="noopener">{{ icon('pin', 16) }} Open in Google Maps</a>{% endif %}
+          <a class="btn btn-light btn-small" href="https://wa.me/{{ whatsapp_number(o.phone) }}" target="_blank" rel="noopener">{{ icon('whatsapp', 16) }} WhatsApp</a>
+          <a class="btn btn-light btn-small" href="tel:{{ o.phone }}">{{ icon('phone', 16) }} Call {{ o.phone }}</a>
+        </div>
         <div class="actions">
           {% for s in next_statuses.get(o.status, []) %}
             <form action="{{ url_for('vendor_order_status', order_id=o.id) }}" method="POST">

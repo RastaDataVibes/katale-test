@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Shop settings | {{ site_name }}{% endblock %}
+{% block content %}
+<div class="wrap">
+  <form class="card form-card wide" method="POST">
+    <h1>Shop settings</h1>
+    <p class="muted">Changes show to customers straight away.</p>
+    {% set f = vendor %}
+    {% include "_shop_form.html" %}
+    <button class="btn" type="submit">Save changes</button>
+  </form>
+</div>
+{% endblock %}

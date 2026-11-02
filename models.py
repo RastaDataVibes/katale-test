@@ -1,7 +1,19 @@
+import math
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
 db = SQLAlchemy()
+
+def distance_km(lat1, lng1, lat2, lng2):
+    """Straight-line distance in km between two points on the map (the 'haversine' formula)."""
+    if None in (lat1, lng1, lat2, lng2):
+        return None
+    r = 6371.0  # Earth's radius in km
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
 
 STATUS_LABELS = {
     'placed': 'Order placed',
@@ -25,6 +37,9 @@ class User(db.Model):
     google_id = db.Column(db.String(64), unique=True, nullable=True)
     avatar_url = db.Column(db.String(500), nullable=True)
     default_address = db.Column(db.String(300), nullable=True)
+    # Last delivery spot this person used (so we remember it next time)
+    default_lat = db.Column(db.Float, nullable=True)
+    default_lng = db.Column(db.Float, nullable=True)
     # 'customer' / 'vendor' / 'admin'
     role = db.Column(db.String(20), default='customer', nullable=False)
     date_joined = db.Column(db.DateTime, default=datetime.utcnow)
@@ -48,7 +63,32 @@ class Vendor(db.Model):
     image_url = db.Column(db.String(500), nullable=True)
     is_approved = db.Column(db.Boolean, default=False, nullable=False)  # admin must approve
     is_open = db.Column(db.Boolean, default=True, nullable=False)       # vendor toggles this
+
+    # Where the shop is, and how it delivers (traders deliver themselves for now)
+    lat = db.Column(db.Float, nullable=True)
+    lng = db.Column(db.Float, nullable=True)
+    delivery_radius_km = db.Column(db.Float, default=5, nullable=False)    # how far they deliver
+    delivery_base_fee = db.Column(db.Integer, default=2000, nullable=False)  # UGX, starting fee
+    delivery_per_km = db.Column(db.Integer, default=1000, nullable=False)    # UGX for every km
     date_added = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def has_location(self):
+        return self.lat is not None and self.lng is not None
+
+    def distance_to(self, lat, lng):
+        if not self.has_location:
+            return None
+        return distance_km(self.lat, self.lng, lat, lng)
+
+    def delivers_to(self, lat, lng):
+        d = self.distance_to(lat, lng)
+        return d is not None and d <= (self.delivery_radius_km or 0)
+
+    def delivery_fee_for(self, km):
+        """Starting fee + price per km, rounded up to the nearest UGX 500."""
+        fee = (self.delivery_base_fee or 0) + (self.delivery_per_km or 0) * km
+        return int(math.ceil(fee / 500.0) * 500)
 
     owner = db.relationship('User', backref=db.backref('vendor', uselist=False))
     products = db.relationship('Product', backref='vendor', cascade='all, delete-orphan',
@@ -77,6 +117,10 @@ class Order(db.Model):
 
     delivery_address = db.Column(db.String(300), nullable=False)
     phone = db.Column(db.String(30), nullable=False)
+    delivery_lat = db.Column(db.Float, nullable=True)
+    delivery_lng = db.Column(db.Float, nullable=True)
+    delivery_landmark = db.Column(db.String(200), nullable=True)   # "blue gate opposite Shell"
+    distance_km = db.Column(db.Float, nullable=True)
     notes = db.Column(db.Text, nullable=True)
 
     payment_method = db.Column(db.String(20), default='cash', nullable=False)   # 'cash' / 'mobile_money'
@@ -92,6 +136,13 @@ class Order(db.Model):
     customer = db.relationship('User', backref='orders')
     vendor = db.relationship('Vendor', backref='orders')
     items = db.relationship('OrderItem', backref='order', cascade='all, delete-orphan')
+
+    @property
+    def maps_link(self):
+        """Google Maps directions to the customer's pin (opens the app on phones)."""
+        if self.delivery_lat is None:
+            return None
+        return f'https://www.google.com/maps/dir/?api=1&destination={self.delivery_lat},{self.delivery_lng}'
 
     @property
     def reference(self):

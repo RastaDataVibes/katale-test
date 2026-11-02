@@ -1,0 +1,59 @@
+{# The shop details form: used when opening a shop and in Shop settings.
+   `f` holds the current values (a shop, or what was typed). #}
+{% from "_map_picker.html" import map_picker with context %}
+{% from "_icons.html" import icon %}
+<label for="name">Shop name</label>
+<input id="name" name="name" value="{{ f.name or '' }}" required>
+<div class="row">
+  <div>
+    <label for="category">Category</label>
+    <select id="category" name="category">{% for c in vendor_categories %}<option {{ 'selected' if f.category == c }}>{{ c }}</option>{% endfor %}</select>
+  </div>
+  <div>
+    <label for="phone">Shop phone / WhatsApp</label>
+    <input id="phone" name="phone" type="tel" value="{{ f.phone or '' }}" placeholder="07XX XXX XXX">
+  </div>
+</div>
+<label for="description">What do you sell?</label>
+<textarea id="description" name="description">{{ f.description or '' }}</textarea>
+<label for="image_url">Photo link <span class="opt">(optional, uploads come in the next update)</span></label>
+<input id="image_url" name="image_url" value="{{ f.image_url or '' }}" placeholder="https://...">
+
+<h3 class="form-section">{{ icon('pin', 20) }} Where is your shop?</h3>
+<p class="muted">Customers near you will find you, and we work out the distance for each delivery.</p>
+{% set flat = f.lat|float if (f.lat is defined and f.lat not in (none, '')) else none %}
+{% set flng = f.lng|float if (f.lng is defined and f.lng not in (none, '')) else none %}
+{{ map_picker(flat, flng, address_input_id='area', hint='Drag the pin onto your shop') }}
+<label for="area">Area / street</label>
+<input id="area" name="area" value="{{ f.area or '' }}" placeholder="Fills in when you set the pin, e.g. Ntinda, Kampala">
+
+<h3 class="form-section">{{ icon('bike', 20) }} Delivery</h3>
+<p class="muted">You deliver your own orders for now (Katale riders are coming soon). Set how far you go and what you charge.</p>
+<div class="row three">
+  <div>
+    <label for="delivery_radius_km">Deliver up to (km)</label>
+    <input id="delivery_radius_km" name="delivery_radius_km" type="number" min="0.5" max="30" step="0.5" value="{{ f.delivery_radius_km or 5 }}">
+  </div>
+  <div>
+    <label for="delivery_base_fee">Starting fee (UGX)</label>
+    <input id="delivery_base_fee" name="delivery_base_fee" type="number" min="0" max="50000" step="500" value="{{ f.delivery_base_fee if f.delivery_base_fee is not none and f.delivery_base_fee != '' else 2000 }}">
+  </div>
+  <div>
+    <label for="delivery_per_km">Price per km (UGX)</label>
+    <input id="delivery_per_km" name="delivery_per_km" type="number" min="0" max="10000" step="100" value="{{ f.delivery_per_km if f.delivery_per_km is not none and f.delivery_per_km != '' else 1000 }}">
+  </div>
+</div>
+<div class="fee-example" id="fee-example"></div>
+<script>
+(function () {
+  var r = document.getElementById('delivery_radius_km'), b = document.getElementById('delivery_base_fee'), k = document.getElementById('delivery_per_km');
+  function fee(d) { return Math.ceil(((+b.value || 0) + (+k.value || 0) * d) / 500) * 500; }
+  function show() {
+    var max = +r.value || 5, mid = Math.min(3, max);
+    document.getElementById('fee-example').innerHTML = 'Example: a customer <strong>' + mid + ' km</strong> away pays <strong>UGX ' + fee(mid).toLocaleString('en-US') +
+      '</strong> for delivery; one at your limit (<strong>' + max + ' km</strong>) pays <strong>UGX ' + fee(max).toLocaleString('en-US') + '</strong>.';
+  }
+  [r, b, k].forEach(function (el) { el.addEventListener('input', show); });
+  show();
+})();
+</script>

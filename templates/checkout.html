@@ -1,36 +1,80 @@
 {% extends "base.html" %}
+{% from "_map_picker.html" import map_picker with context %}
+{% from "_icons.html" import icon %}
 {% block title %}Checkout | {{ site_name }}{% endblock %}
 {% block content %}
 <section>
-  <div class="wrap two-col">
-    <form class="card" method="POST">
-      <h2>Delivery details</h2>
-      <label for="delivery_address">Delivery address</label>
-      <input id="delivery_address" name="delivery_address" value="{{ user.default_address or '' }}" placeholder="Street, area, landmark" required>
-      <label for="phone">Phone number</label>
-      <input id="phone" name="phone" value="{{ user.phone or '' }}" placeholder="07XX XXX XXX" required>
-      <label for="notes">Notes for the shop (optional)</label>
-      <textarea id="notes" name="notes" placeholder="Gate colour, ripeness, spice level..."></textarea>
-      <label for="payment_method">How will you pay?</label>
-      <select id="payment_method" name="payment_method">
-        {% for key, label in payment_methods.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
-      </select>
-      <button class="btn" type="submit" style="margin-top:22px">Place order</button>
-    </form>
+  <div class="wrap">
+    <h1>Checkout</h1>
+    <form method="POST" class="two-col" id="checkout-form">
+      <div class="card">
+        <h2>{{ icon('pin', 22) }} Where should we deliver?</h2>
+        {{ map_picker(loc.lat if loc else none, loc.lng if loc else none, address_input_id='delivery_address',
+                      hint='Drag the pin to your gate. The rider uses this exact spot.') }}
 
-    <div class="card">
-      <h2>{{ cart.vendor.name }}</h2>
-      {% for l in cart.lines %}
-        <div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0">
-          <span>{{ l.qty }} &times; {{ l.product.name }}</span><span>{{ l.total|ugx }}</span>
-        </div>
-      {% endfor %}
-      <div class="summary" style="margin-left:0;max-width:none">
-        <div><span>Subtotal</span><span>{{ cart.subtotal|ugx }}</span></div>
-        <div><span>Delivery</span><span>{{ delivery_fee|ugx }}</span></div>
-        <div class="total"><span>Total</span><span>{{ (cart.subtotal + delivery_fee)|ugx }}</span></div>
+        <label for="delivery_address">Address</label>
+        <input id="delivery_address" name="delivery_address" value="{{ user.default_address or '' }}" placeholder="Fills in when you set the pin" required>
+        <label for="landmark">Landmark <span class="opt">(helps the rider find you)</span></label>
+        <input id="landmark" name="landmark" placeholder="e.g. blue gate opposite Shell, 2nd floor">
+        <label for="phone">Phone number</label>
+        <input id="phone" name="phone" type="tel" value="{{ user.phone or '' }}" placeholder="07XX XXX XXX" required>
+        <label for="notes">Notes for the shop <span class="opt">(optional)</span></label>
+        <textarea id="notes" name="notes" placeholder="Ripeness, spice level, call when you arrive..."></textarea>
+        <label for="payment_method">How will you pay?</label>
+        <select id="payment_method" name="payment_method">
+          {% for key, label in payment_methods.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
       </div>
-    </div>
+
+      <div class="card sticky-summary">
+        <h2>{{ cart.vendor.name }}</h2>
+        {% for l in cart.lines %}
+          <div class="line"><span>{{ l.qty }} &times; {{ l.product.name }}</span><span>{{ l.total|ugx }}</span></div>
+        {% endfor %}
+        <div class="summary" style="margin-left:0;max-width:none">
+          <div><span>Subtotal</span><span>{{ cart.subtotal|ugx }}</span></div>
+          <div><span>Delivery <small id="km-label">{% if cart.quote and cart.quote.known %}({{ '%.1f'|format(cart.quote.km) }} km){% endif %}</small></span>
+               <span id="fee-label">{% if cart.quote and cart.quote.fee is not none %}{{ cart.quote.fee|ugx }}{% else %}Set the pin{% endif %}</span></div>
+          <div class="total"><span>Total</span><span id="total-label">{% if cart.quote and cart.quote.fee is not none %}{{ (cart.subtotal + cart.quote.fee)|ugx }}{% else %}{{ cart.subtotal|ugx }}{% endif %}</span></div>
+        </div>
+        <p class="muted" id="far-msg" style="color:var(--red);display:none"></p>
+        <button class="btn btn-block" type="submit" style="margin-top:18px">Place order</button>
+        <p class="muted center" style="margin-top:10px;font-size:13.5px">{{ icon('cash', 15) }} You pay when your order arrives</p>
+      </div>
+    </form>
   </div>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+// Update the delivery price live while the customer moves the pin.
+// (The server works it out again when the order is placed, so this is only a preview.)
+(function () {
+  var shop = {{ {'lat': cart.vendor.lat, 'lng': cart.vendor.lng, 'radius': cart.vendor.delivery_radius_km,
+                 'base': cart.vendor.delivery_base_fee, 'perKm': cart.vendor.delivery_per_km, 'name': cart.vendor.name}|tojson }};
+  var subtotal = {{ cart.subtotal|float }};
+  if (shop.lat === null) return;
+  var latIn = document.querySelector('.mp-lat'), lngIn = document.querySelector('.mp-lng');
+  function km(a, b, c, d) {
+    var R = 6371, r = Math.PI / 180, dLat = (c - a) * r, dLng = (d - b) * r;
+    var x = Math.sin(dLat / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+  function ugx(n) { return 'UGX ' + Math.round(n).toLocaleString('en-US'); }
+  function update() {
+    if (!latIn.value) return;
+    var d = km(shop.lat, shop.lng, parseFloat(latIn.value), parseFloat(lngIn.value));
+    var fee = Math.ceil((shop.base + shop.perKm * d) / 500) * 500;
+    document.getElementById('km-label').textContent = '(' + d.toFixed(1) + ' km)';
+    document.getElementById('fee-label').textContent = ugx(fee);
+    document.getElementById('total-label').textContent = ugx(subtotal + fee);
+    var far = document.getElementById('far-msg');
+    if (d > shop.radius) {
+      far.style.display = 'block';
+      far.textContent = shop.name + ' only delivers up to ' + shop.radius + ' km. Your pin is ' + d.toFixed(1) + ' km away.';
+    } else { far.style.display = 'none'; }
+  }
+  setInterval(update, 700);
+})();
+</script>
 {% endblock %}

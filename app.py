@@ -13,7 +13,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import inspect, text
-from models import db, User, Vendor, Product, Order, OrderItem, STATUS_LABELS
+from models import db, User, Vendor, Product, Order, OrderItem, STATUS_LABELS, distance_km
 
 app = Flask(__name__)
 # Render sits in front of the app; this lets Flask know the real address is https://
@@ -57,7 +57,8 @@ MAIL_SENDER = os.environ.get('MAIL_SENDER', '').strip()          # e.g. katale@o
 
 SITE_NAME = 'Katale'
 ADMIN_EMAIL = (os.environ.get('ADMIN_EMAIL') or '').strip().lower()
-DELIVERY_FEE = 5000  # UGX, flat for now (step 3 will work it out from the distance)
+DELIVERY_FEE = 5000  # UGX, only used for shops that have not pinned their location yet
+KAMPALA = (0.3476, 32.5825)  # where maps start if we know nothing else
 TRADER_MONTHLY_FEE = 30000  # UGX per month, first month free (step 5 adds the payments)
 
 VENDOR_CATEGORIES = ['Groceries', 'Fresh produce', 'Meat & fish', 'Grains & cereals',
@@ -99,20 +100,38 @@ VENDOR_NEXT_STATUS = {
 db.init_app(app)
 
 
+# New columns added after the app first went live: (table, column, type).
+# When a later step adds a column to models.py, it also gets one line here.
+NEW_COLUMNS = [
+    ('users', 'google_id', 'VARCHAR(64)'),
+    ('users', 'avatar_url', 'VARCHAR(500)'),
+    ('users', 'default_lat', 'FLOAT'),
+    ('users', 'default_lng', 'FLOAT'),
+    ('vendors', 'lat', 'FLOAT'),
+    ('vendors', 'lng', 'FLOAT'),
+    ('vendors', 'delivery_radius_km', 'FLOAT NOT NULL DEFAULT 5'),
+    ('vendors', 'delivery_base_fee', 'INTEGER NOT NULL DEFAULT 2000'),
+    ('vendors', 'delivery_per_km', 'INTEGER NOT NULL DEFAULT 1000'),
+    ('orders', 'delivery_lat', 'FLOAT'),
+    ('orders', 'delivery_lng', 'FLOAT'),
+    ('orders', 'delivery_landmark', 'VARCHAR(200)'),
+    ('orders', 'distance_km', 'FLOAT'),
+]
+
+
 def add_missing_columns():
     """create_all() makes new tables but never changes old ones.
     This adds any new columns to tables that already exist, so the live
     database keeps up with models.py without losing any data."""
     insp = inspect(db.engine)
     is_pg = db.engine.dialect.name == 'postgresql'
-    user_cols = {c['name']: c for c in insp.get_columns('users')}
+    existing = {tbl: {c['name']: c for c in insp.get_columns(tbl)} for tbl in ('users', 'vendors', 'orders')}
     with db.engine.begin() as conn:
-        if 'google_id' not in user_cols:
-            conn.execute(text('ALTER TABLE users ADD COLUMN google_id VARCHAR(64)'))
-            conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id)'))
-        if 'avatar_url' not in user_cols:
-            conn.execute(text('ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500)'))
-        if is_pg and not user_cols['password_hash'].get('nullable', True):
+        for table, column, coltype in NEW_COLUMNS:
+            if column not in existing[table]:
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {coltype}'))
+        conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id)'))
+        if is_pg and not existing['users']['password_hash'].get('nullable', True):
             conn.execute(text('ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL'))
 
 
@@ -153,6 +172,65 @@ def _get_cart():
     return session.get('cart') or {'vendor_id': None, 'items': {}}
 
 
+# ── Customer location ────────────────────────────────────────
+# Kept in the browser session, so it works before people log in.
+# Logged-in customers also get it saved on their account for next time.
+def get_location():
+    loc = session.get('loc')
+    if not loc:
+        user = get_current_user()
+        if user and user.default_lat is not None:
+            loc = {'lat': user.default_lat, 'lng': user.default_lng,
+                   'label': short_label(user.default_address) or 'Saved location'}
+            session['loc'] = loc
+    return loc
+
+
+def short_label(text_):
+    """'Ntinda Road, Ntinda, Kampala, Uganda' -> 'Ntinda Road, Ntinda'"""
+    if not text_:
+        return ''
+    parts = [p.strip() for p in text_.split(',') if p.strip()]
+    return ', '.join(parts[:2])[:60]
+
+
+def parse_point(lat, lng):
+    """Turn two form values into numbers, only if they are a real spot in/near Uganda."""
+    try:
+        lat, lng = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return None
+    if -2.0 <= lat <= 5.0 and 28.5 <= lng <= 36.0:
+        return lat, lng
+    return None
+
+
+def delivery_quote(vendor, loc):
+    """How far, how much, and whether this shop can deliver to the customer.
+    Returns a dict the pages can show."""
+    if not loc:
+        return {'known': False, 'reaches': True, 'km': None, 'fee': None}
+    if not vendor.has_location:
+        return {'known': False, 'reaches': True, 'km': None, 'fee': DELIVERY_FEE}
+    km = vendor.distance_to(loc['lat'], loc['lng'])
+    return {'known': True, 'km': km, 'reaches': km <= vendor.delivery_radius_km,
+            'fee': vendor.delivery_fee_for(km)}
+
+
+def shops_near(query, loc):
+    """Attach distance + fee to each shop. If we know where the customer is,
+    hide shops that can't reach them and put the nearest first."""
+    vendors = query.all()
+    for v in vendors:
+        v.quote = delivery_quote(v, loc)
+    if not loc:
+        return vendors, 0
+    reachable = [v for v in vendors if v.quote['reaches']]
+    too_far = len(vendors) - len(reachable)
+    reachable.sort(key=lambda v: (not v.is_open, v.quote['km'] if v.quote['km'] is not None else 9999))
+    return reachable, too_far
+
+
 def cart_details():
     cart = _get_cart()
     vendor = Vendor.query.get(cart['vendor_id']) if cart['vendor_id'] else None
@@ -164,7 +242,18 @@ def cart_details():
         total = product.price * qty
         subtotal += total
         lines.append({'product': product, 'qty': qty, 'total': total})
-    return {'vendor': vendor, 'lines': lines, 'subtotal': subtotal}
+    quote = delivery_quote(vendor, get_location()) if vendor else None
+    return {'vendor': vendor, 'lines': lines, 'subtotal': subtotal, 'quote': quote}
+
+
+def whatsapp_number(phone):
+    """'0772 123456' -> '256772123456' for wa.me links."""
+    digits = re.sub(r'\D', '', phone or '')
+    if digits.startswith('0'):
+        digits = '256' + digits[1:]
+    elif len(digits) == 9:
+        digits = '256' + digits
+    return digits
 
 
 def login_required(f):
@@ -227,6 +316,9 @@ def inject_globals():
         delivery_fee=DELIVERY_FEE,
         trader_fee=TRADER_MONTHLY_FEE,
         photo=photo,
+        customer_loc=get_location(),
+        whatsapp_number=whatsapp_number,
+        kampala=KAMPALA,
     )
 
 
@@ -238,8 +330,9 @@ def health():
 
 @app.route('/')
 def home():
-    featured = Vendor.query.filter_by(is_approved=True, is_open=True).order_by(Vendor.date_added.desc()).limit(6).all()
-    return render_template('home.html', featured=featured)
+    query = Vendor.query.filter_by(is_approved=True, is_open=True).order_by(Vendor.date_added.desc())
+    featured, too_far = shops_near(query, get_location())
+    return render_template('home.html', featured=featured[:6], too_far=too_far)
 
 
 @app.route('/shops')
@@ -255,8 +348,8 @@ def shops():
         query = query.filter(db.or_(Vendor.name.ilike(pattern),
                                     Vendor.description.ilike(pattern),
                                     Vendor.area.ilike(pattern)))
-    vendors = query.order_by(Vendor.is_open.desc(), Vendor.name).all()
-    return render_template('shops.html', vendors=vendors, q=q, category=category)
+    vendors, too_far = shops_near(query.order_by(Vendor.is_open.desc(), Vendor.name), get_location())
+    return render_template('shops.html', vendors=vendors, q=q, category=category, too_far=too_far)
 
 
 @app.route('/shops/<slug>')
@@ -267,7 +360,30 @@ def shop_detail(slug):
     if not vendor.is_approved and not can_preview:
         abort(404)
     products = Product.query.filter_by(vendor_id=vendor.id).order_by(Product.in_stock.desc(), Product.name).all()
-    return render_template('shop_detail.html', vendor=vendor, products=products)
+    return render_template('shop_detail.html', vendor=vendor, products=products,
+                           quote=delivery_quote(vendor, get_location()))
+
+
+# ── Delivery location ("Delivering to ...") ──────────────────
+@app.route('/location', methods=['GET', 'POST'])
+def set_location():
+    nxt = safe_next(request.values.get('next')) or url_for('home')
+    if request.method == 'POST':
+        point = parse_point(request.form.get('lat'), request.form.get('lng'))
+        if not point:
+            flash('Please choose your spot on the map first.', 'error')
+            return redirect(url_for('set_location', next=nxt))
+        address = request.form.get('address', '').strip()[:300]
+        session['loc'] = {'lat': point[0], 'lng': point[1], 'label': short_label(address) or 'Pinned location'}
+        user = get_current_user()
+        if user:
+            user.default_lat, user.default_lng = point
+            if address:
+                user.default_address = address
+            db.session.commit()
+        flash('Delivery location saved. Showing shops that deliver to you.', 'success')
+        return redirect(nxt)
+    return render_template('location.html', next=nxt)
 
 
 # ── Accounts ─────────────────────────────────────────────────
@@ -540,11 +656,26 @@ def checkout():
         return redirect(url_for('cart'))
 
     if request.method == 'POST':
+        point = parse_point(request.form.get('lat'), request.form.get('lng'))
         address = request.form.get('delivery_address', '').strip()
         phone = request.form.get('phone', '').strip()
+        landmark = request.form.get('landmark', '').strip()[:200]
+        if not point:
+            flash('Please drop the pin on the map where you want your order delivered.', 'error')
+            return redirect(url_for('checkout'))
         if not address or not phone:
             flash('Please give a delivery address and a phone number.', 'error')
             return redirect(url_for('checkout'))
+
+        # Work out the fee again here on the server, from the exact pin,
+        # so nobody can change the price in their browser.
+        loc = {'lat': point[0], 'lng': point[1], 'label': short_label(address)}
+        quote = delivery_quote(vendor, loc)
+        if not quote['reaches']:
+            flash(f'{vendor.name} only delivers up to {vendor.delivery_radius_km:g} km away, and your pin is '
+                  f'{quote["km"]:.1f} km away. Move the pin or choose a shop nearer to you.', 'error')
+            return redirect(url_for('checkout'))
+        fee = quote['fee']
 
         method = request.form.get('payment_method', 'cash')
         if method not in PAYMENT_METHODS:
@@ -552,11 +683,13 @@ def checkout():
 
         order = Order(
             customer_id=user.id, vendor_id=vendor.id,
-            delivery_address=address, phone=phone,
+            delivery_address=address[:300], phone=phone,
+            delivery_lat=point[0], delivery_lng=point[1], delivery_landmark=landmark,
+            distance_km=round(quote['km'], 2) if quote['km'] is not None else None,
             notes=request.form.get('notes', '').strip(),
             payment_method=method,
-            subtotal=details['subtotal'], delivery_fee=DELIVERY_FEE,
-            total=details['subtotal'] + DELIVERY_FEE,
+            subtotal=details['subtotal'], delivery_fee=fee,
+            total=details['subtotal'] + fee,
         )
         db.session.add(order)
         db.session.flush()  # gives us order.id before commit
@@ -566,15 +699,18 @@ def checkout():
                 name=line['product'].name, unit_price=line['product'].price,
                 quantity=line['qty'],
             ))
-        if not user.default_address:
-            user.default_address = address
+        # Remember this spot for next time
+        user.default_address, user.default_lat, user.default_lng = address[:300], point[0], point[1]
+        if not user.phone:
+            user.phone = phone
+        session['loc'] = loc
         db.session.commit()
 
         session.pop('cart', None)
         flash('Order placed. The shop will confirm it shortly.', 'success')
         return redirect(url_for('order_detail', order_id=order.id))
 
-    return render_template('checkout.html', cart=details, user=user)
+    return render_template('checkout.html', cart=details, user=user, loc=get_location())
 
 
 @app.route('/orders')
@@ -613,6 +749,37 @@ def cancel_order(order_id):
 
 
 # ── Vendor side ──────────────────────────────────────────────
+def read_shop_form(vendor, fallback_phone=None):
+    """Copy the shop form (details, map pin, delivery settings) onto a vendor.
+    Returns an error message, or None if everything is fine."""
+    name = request.form.get('name', '').strip()
+    if not name:
+        return 'Please give your shop a name.'
+    point = parse_point(request.form.get('lat'), request.form.get('lng'))
+    if not point:
+        return 'Please put your shop on the map: tap "Use my location" or drag the pin to your shop.'
+
+    def number(field, default, low, high):
+        try:
+            value = float(request.form.get(field, default))
+        except (TypeError, ValueError):
+            value = default
+        return max(low, min(high, value))
+
+    vendor.name = name
+    vendor.category = request.form.get('category', '')
+    vendor.description = request.form.get('description', '').strip()
+    vendor.area = request.form.get('area', '').strip()[:120]
+    vendor.phone = request.form.get('phone', '').strip() or fallback_phone
+    if 'image_url' in request.form:
+        vendor.image_url = request.form.get('image_url', '').strip()
+    vendor.lat, vendor.lng = point
+    vendor.delivery_radius_km = number('delivery_radius_km', 5, 0.5, 30)
+    vendor.delivery_base_fee = int(number('delivery_base_fee', 2000, 0, 50000))
+    vendor.delivery_per_km = int(number('delivery_per_km', 1000, 0, 10000))
+    return None
+
+
 @app.route('/sell', methods=['GET', 'POST'])
 @login_required
 def vendor_apply():
@@ -621,18 +788,13 @@ def vendor_apply():
         return redirect(url_for('vendor_dashboard'))
 
     if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        if not name:
-            flash('Please give your shop a name.', 'error')
-            return redirect(url_for('vendor_apply'))
-        vendor = Vendor(
-            owner_id=user.id, name=name, slug=unique_vendor_slug(name),
-            category=request.form.get('category', ''),
-            description=request.form.get('description', '').strip(),
-            area=request.form.get('area', '').strip(),
-            phone=request.form.get('phone', '').strip() or user.phone,
-            image_url=request.form.get('image_url', '').strip(),
-        )
+        vendor = Vendor()   # not saved yet
+        error = read_shop_form(vendor, user.phone)
+        if error:
+            flash(error, 'error')
+            return render_template('vendor_apply.html', form=request.form)
+        vendor.slug = unique_vendor_slug(vendor.name)
+        vendor.owner_id = user.id
         if user.role == 'customer':
             user.role = 'vendor'
         db.session.add(vendor)
@@ -640,7 +802,23 @@ def vendor_apply():
         flash('Your shop has been submitted. You can add products now; it goes live once approved.', 'success')
         return redirect(url_for('vendor_dashboard'))
 
-    return render_template('vendor_apply.html')
+    return render_template('vendor_apply.html', form={})
+
+
+@app.route('/vendor/settings', methods=['GET', 'POST'])
+@vendor_required
+def vendor_settings():
+    vendor = get_current_user().vendor
+    if request.method == 'POST':
+        error = read_shop_form(vendor, vendor.owner.phone)
+        if error:
+            db.session.rollback()
+            flash(error, 'error')
+            return redirect(url_for('vendor_settings'))
+        db.session.commit()
+        flash('Shop settings saved.', 'success')
+        return redirect(url_for('vendor_dashboard'))
+    return render_template('vendor_settings.html', vendor=vendor)
 
 
 @app.route('/vendor')

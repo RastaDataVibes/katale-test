@@ -31,8 +31,16 @@
       </div>
       <div class="summary">
         <div><span>Subtotal</span><span>{{ cart.subtotal|ugx }}</span></div>
-        <div><span>Delivery</span><span>{{ delivery_fee|ugx }}</span></div>
-        <div class="total"><span>Total</span><span>{{ (cart.subtotal + delivery_fee)|ugx }}</span></div>
+        {% if cart.quote and cart.quote.fee is not none %}
+          <div><span>Delivery{% if cart.quote.known %} ({{ '%.1f'|format(cart.quote.km) }} km){% endif %}</span><span>{{ cart.quote.fee|ugx }}</span></div>
+          <div class="total"><span>Total</span><span>{{ (cart.subtotal + cart.quote.fee)|ugx }}</span></div>
+        {% else %}
+          <div><span>Delivery</span><span><a class="text-link" href="{{ url_for('set_location', next=request.path) }}">Set location</a></span></div>
+          <div class="total"><span>Total (before delivery)</span><span>{{ cart.subtotal|ugx }}</span></div>
+        {% endif %}
+        {% if cart.quote and not cart.quote.reaches %}
+          <div class="flash flash-error" style="margin-top:10px">{{ icon('info', 18) }}<span>{{ cart.vendor.name }} does not deliver to {{ customer_loc.label }}. Change your location or choose another shop.</span></div>
+        {% endif %}
       </div>
       <div class="actions" style="justify-content:flex-end">
         <form action="{{ url_for('cart_clear') }}" method="POST"><button class="btn btn-danger" type="submit">Clear cart</button></form>

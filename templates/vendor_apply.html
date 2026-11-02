@@ -5,24 +5,8 @@
   <form class="card form-card wide" method="POST">
     <h1>Open your shop</h1>
     <p class="muted">Tell customers who you are. You can add products straight away, and your shop goes live once we approve it. Your first month is free, then {{ trader_fee|ugx }} a month, with no commission on your sales.</p>
-    <label for="name">Shop name</label>
-    <input id="name" name="name" required>
-    <div class="row">
-      <div>
-        <label for="category">Category</label>
-        <select id="category" name="category">{% for c in vendor_categories %}<option>{{ c }}</option>{% endfor %}</select>
-      </div>
-      <div>
-        <label for="area">Area</label>
-        <input id="area" name="area" placeholder="Ntinda, Kampala">
-      </div>
-    </div>
-    <label for="phone">Shop phone</label>
-    <input id="phone" name="phone" placeholder="07XX XXX XXX">
-    <label for="description">What do you sell?</label>
-    <textarea id="description" name="description"></textarea>
-    <label for="image_url">Photo link (optional)</label>
-    <input id="image_url" name="image_url" placeholder="https://...">
+    {% set f = form %}
+    {% include "_shop_form.html" %}
     <button class="btn" type="submit">Submit shop</button>
   </form>
 </div>

@@ -16,5 +16,11 @@
       <span>{{ icon('pin', 15) }} {{ v.area or 'Kampala' }}</span>
       {% if v.category %}<span>{{ category_icon(v.category, 15) }} {{ v.category }}</span>{% endif %}
     </div>
+    {% if v.quote is defined and v.quote.known %}
+      <div class="deliv-line">
+        <span>{{ icon('bike', 15) }} {{ '%.1f'|format(v.quote.km) }} km away</span>
+        <span class="fee">Delivery {{ v.quote.fee|ugx }}</span>
+      </div>
+    {% endif %}
   </div>
 </a>

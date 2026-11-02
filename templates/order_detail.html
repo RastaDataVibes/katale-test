@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_map_picker.html" import map_view %}
+{% from "_icons.html" import icon %}
 {% block title %}{{ order.reference }} | {{ site_name }}{% endblock %}
 {% block content %}
 <section>
@@ -26,7 +28,21 @@
     </div>
     <div class="card" style="margin-top:24px">
       <h3>Delivering to</h3>
-      <p>{{ order.delivery_address }}<br>{{ order.phone }}</p>
+      <p>{{ order.delivery_address }}{% if order.delivery_landmark %}<br><span class="muted">Landmark: {{ order.delivery_landmark }}</span>{% endif %}<br>{{ order.phone }}</p>
+      {% if order.distance_km %}<p class="muted">{{ icon('bike', 15) }} {{ '%.1f'|format(order.distance_km) }} km from {{ order.vendor.name }}</p>{% endif %}
+      <div style="margin-top:14px;border-radius:14px;overflow:hidden">
+        {{ map_view([
+          {'lat': order.vendor.lat, 'lng': order.vendor.lng, 'label': order.vendor.name, 'kind': 'shop'},
+          {'lat': order.delivery_lat, 'lng': order.delivery_lng, 'label': 'Delivery spot'}
+        ]) }}
+      </div>
+      {% if current_user.id == order.vendor.owner_id and order.maps_link %}
+        <div class="contact-row"><a class="btn btn-dark btn-small" href="{{ order.maps_link }}" target="_blank" rel="noopener">{{ icon('pin', 16) }} Open in Google Maps</a>
+        <a class="btn btn-light btn-small" href="https://wa.me/{{ whatsapp_number(order.phone) }}" target="_blank" rel="noopener">{{ icon('whatsapp', 16) }} WhatsApp customer</a></div>
+      {% elif current_user.id == order.customer_id and order.vendor.phone %}
+        <div class="contact-row"><a class="btn btn-light btn-small" href="https://wa.me/{{ whatsapp_number(order.vendor.phone) }}" target="_blank" rel="noopener">{{ icon('whatsapp', 16) }} WhatsApp the shop</a>
+        <a class="btn btn-light btn-small" href="tel:{{ order.vendor.phone }}">{{ icon('phone', 16) }} Call the shop</a></div>
+      {% endif %}
       {% if order.notes %}<p class="muted" style="margin-top:8px">Note: {{ order.notes }}</p>{% endif %}
     </div>
     {% if current_user.id == order.customer_id and order.status == 'placed' %}

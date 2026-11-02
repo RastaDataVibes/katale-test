@@ -26,6 +26,11 @@
       <span class="brand-name">Kat<em>ale</em></span>
     </a>
 
+    <a href="{{ url_for('set_location', next=request.full_path) }}" class="loc-pill" title="Change delivery location">
+      {{ icon('pin', 18) }}
+      <span class="loc-text"><small>Delivering to</small><strong>{{ customer_loc.label if customer_loc else 'Set your location' }}</strong></span>
+    </a>
+
     <form class="top-search" action="{{ url_for('shops') }}" method="GET" role="search">
       {{ icon('search', 18) }}
       <input type="search" name="q" placeholder="Search shops, food or area" value="{{ request.args.get('q', '') }}" aria-label="Search">
@@ -74,6 +79,11 @@
     {% endif %}
   </div>
 </header>
+
+<a href="{{ url_for('set_location', next=request.full_path) }}" class="loc-strip">
+  {{ icon('pin', 16) }} <span>{% if customer_loc %}Delivering to <strong>{{ customer_loc.label }}</strong>{% else %}<strong>Set your delivery location</strong> to see shops near you{% endif %}</span>
+  <span class="loc-change">Change</span>
+</a>
 
 {# ── Messages (e.g. "Added to cart") ─────────────────── #}
 {% with messages = get_flashed_messages(with_categories=true) %}
