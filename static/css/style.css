@@ -311,3 +311,18 @@ a.order-row:hover{box-shadow:var(--shadow);}
 .text-link{color:var(--green-mid); font-weight:600;}
 .text-link:hover{color:var(--green-dark);}
 @media (max-width:720px){ .shop-hero-img{height:150px;} }
+
+/* ── Google button + password field ──────────────────── */
+.btn-google{display:flex; align-items:center; justify-content:center; gap:12px; width:100%; padding:13px; border:1.5px solid var(--line); border-radius:50px; background:#fff; font:600 15.5px var(--body); color:var(--ink); transition:border-color .2s, box-shadow .2s;}
+.btn-google:hover{border-color:#c9c6bd; box-shadow:var(--shadow);}
+.or{display:flex; align-items:center; gap:12px; margin:22px 0 4px; color:var(--muted); font-size:13.5px;}
+.or::before,.or::after{content:''; flex:1; height:1px; background:var(--line);}
+.label-row{display:flex; justify-content:space-between; align-items:baseline;}
+.text-link.small{font-size:13.5px;}
+.opt{text-transform:none; letter-spacing:0; font-weight:400;}
+.pw-wrap{position:relative;}
+.pw-wrap input{padding-right:46px;}
+.pw-eye{position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--muted); width:36px; height:36px; display:grid; place-items:center; cursor:pointer; border-radius:50%;}
+.pw-eye:hover{background:var(--bg);}
+.avatar img{width:100%; height:100%; border-radius:50%; object-fit:cover;}
+.avatar{overflow:hidden;}

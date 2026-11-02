@@ -51,7 +51,7 @@
 
     {% if current_user %}
       <details class="account">
-        <summary class="avatar" aria-label="Account menu">{{ current_user.name[0]|upper }}</summary>
+        <summary class="avatar" aria-label="Account menu">{% if current_user.avatar_url %}<img src="{{ current_user.avatar_url }}" alt="" referrerpolicy="no-referrer">{% else %}{{ current_user.name[0]|upper }}{% endif %}</summary>
         <div class="account-menu">
           <div class="account-head">
             <strong>{{ current_user.name }}</strong>

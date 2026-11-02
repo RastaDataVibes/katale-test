@@ -19,7 +19,11 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone = db.Column(db.String(30), nullable=True)
-    password_hash = db.Column(db.String(255), nullable=False)
+    # Empty for people who only ever sign in with Google
+    password_hash = db.Column(db.String(255), nullable=True)
+    # Google's permanent number for this person (set when they use "Continue with Google")
+    google_id = db.Column(db.String(64), unique=True, nullable=True)
+    avatar_url = db.Column(db.String(500), nullable=True)
     default_address = db.Column(db.String(300), nullable=True)
     # 'customer' / 'vendor' / 'admin'
     role = db.Column(db.String(20), default='customer', nullable=False)

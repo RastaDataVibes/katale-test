@@ -1,22 +1,31 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Sign up | {{ site_name }}{% endblock %}
 {% block content %}
 <div class="wrap">
-  <form class="card form-card" method="POST">
+  <div class="card form-card">
     <a href="{{ url_for('home') }}" class="auth-logo"><img src="{{ url_for('static', filename='img/gc-logo.svg') }}" alt="Katale"></a>
     <h1 class="center">Create your account</h1>
-    <p class="muted center">It takes less than a minute.</p>
-    <label for="name">Full name</label>
-    <input id="name" name="name" required>
-    <label for="email">Email</label>
-    <input id="email" type="email" name="email" required>
-    <label for="phone">Phone number</label>
-    <input id="phone" name="phone" placeholder="07XX XXX XXX">
-    <label for="password">Password</label>
-    <input id="password" type="password" name="password" minlength="8" required>
-    <p class="muted" style="margin-top:6px">At least 8 characters.</p>
-    <button class="btn" type="submit">Sign up</button>
-    <p class="muted" style="margin-top:16px;text-align:center">Already have an account? <a class="text-link" href="{{ url_for('login') }}">Log in</a></p>
-  </form>
+    <p class="muted center" style="margin-bottom:22px">It takes less than a minute.</p>
+
+    {% include "_google_button.html" %}
+
+    <form method="POST">
+      <label for="name">Full name</label>
+      <input id="name" name="name" autocomplete="name" required>
+      <label for="email">Email</label>
+      <input id="email" type="email" name="email" autocomplete="email" required>
+      <label for="phone">Phone number <span class="opt">(optional)</span></label>
+      <input id="phone" name="phone" type="tel" autocomplete="tel" placeholder="07XX XXX XXX">
+      <label for="password">Password</label>
+      <div class="pw-wrap">
+        <input id="password" type="password" name="password" minlength="8" autocomplete="new-password" required>
+        <button type="button" class="pw-eye" aria-label="Show password" onclick="var i=document.getElementById('password'); i.type = i.type==='password' ? 'text' : 'password';">{{ icon('eye', 18) }}</button>
+      </div>
+      <p class="muted" style="margin-top:6px;font-size:13.5px">At least 8 characters.</p>
+      <button class="btn" type="submit">Create account</button>
+    </form>
+    <p class="muted center" style="margin-top:18px">Already have an account? <a class="text-link" href="{{ url_for('login', next=request.args.get('next')) }}">Log in</a></p>
+  </div>
 </div>
 {% endblock %}

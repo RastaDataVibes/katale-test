@@ -3,3 +3,5 @@ Flask-SQLAlchemy
 psycopg2-binary
 python-dotenv
 gunicorn
+Authlib
+requests
