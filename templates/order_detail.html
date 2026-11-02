@@ -48,7 +48,7 @@
     {% if current_user.id == order.customer_id and order.status not in ('delivered', 'cancelled') %}
       <div class="push-nudge">
         <span>{{ icon('phone', 18) }} Get a pop-up on your phone when your order moves, even with Katale closed.</span>
-        <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-on-html="{{ (icon('check', 16) ~ ' Notifications on')|e }}">{{ icon('bell', 16) }} Turn on notifications</button>
+        <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-on-html="{{ (icon('check', 16) ~ ' Notifications on')|forceescape }}">{{ icon('bell', 16) }} Turn on notifications</button>
       </div>
     {% endif %}
     <p style="margin:18px 0 24px">
