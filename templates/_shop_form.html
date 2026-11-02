@@ -2,6 +2,7 @@
    `f` holds the current values (a shop, or what was typed). #}
 {% from "_map_picker.html" import map_picker with context %}
 {% from "_icons.html" import icon %}
+{% from "_photo_input.html" import photo_input with context %}
 <label for="name">Shop name</label>
 <input id="name" name="name" value="{{ f.name or '' }}" required>
 <div class="row">
@@ -16,8 +17,8 @@
 </div>
 <label for="description">What do you sell?</label>
 <textarea id="description" name="description">{{ f.description or '' }}</textarea>
-<label for="image_url">Photo link <span class="opt">(optional, uploads come in the next update)</span></label>
-<input id="image_url" name="image_url" value="{{ f.image_url or '' }}" placeholder="https://...">
+<label>Shop photo <span class="opt">(your shop front, stall or best products)</span></label>
+{{ photo_input('photo', f.image_url if f.image_url is defined else none, label='Shop photo', wide=True) }}
 
 <h3 class="form-section">{{ icon('pin', 20) }} Where is your shop?</h3>
 <p class="muted">Customers near you will find you, and we work out the distance for each delivery.</p>

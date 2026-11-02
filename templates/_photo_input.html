@@ -1,0 +1,65 @@
+{#
+  The "Add photo" box. Tap it, pick or take a picture, see a preview.
+  The picture is shrunk on the phone before it is sent (saves the trader's data),
+  then the server sends it to Cloudinary.
+  The <form> using it needs:  enctype="multipart/form-data"
+
+    {% from "_photo_input.html" import photo_input %}
+    {{ photo_input('photo', current_url, label='Shop photo') }}
+#}
+{% from "_icons.html" import icon %}
+{% macro photo_input(name='photo', current=None, label='Photo', wide=False) -%}
+<div class="photo-input {{ 'wide' if wide }} {{ 'has-img' if current }}">
+  <label class="pi-box">
+    <input type="file" name="{{ name }}" accept="image/*" class="pi-file">
+    <img class="pi-preview" src="{{ sized(current, 600, 400) if current else '' }}" alt="" {{ '' if current else 'hidden' }}>
+    <span class="pi-empty">
+      <span class="pi-ico">{{ icon('camera', 26) }}</span>
+      <strong>Add {{ label|lower }}</strong>
+      <small>Tap to choose or take a picture</small>
+    </span>
+    <span class="pi-change">{{ icon('camera', 16) }} Change</span>
+  </label>
+  {% if current %}
+    <label class="pi-remove"><input type="checkbox" name="remove_photo" value="1"> Remove this photo</label>
+  {% endif %}
+  <p class="pi-status" hidden></p>
+</div>
+<script>
+(function () {
+  document.querySelectorAll('.photo-input:not([data-ready])').forEach(function (box) {
+    box.setAttribute('data-ready', '1');
+    var input = box.querySelector('.pi-file'), img = box.querySelector('.pi-preview'), status = box.querySelector('.pi-status');
+    var MAX = 1600;  // longest side in pixels, plenty for the web
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { status.hidden = false; status.textContent = 'Please choose a photo (JPG or PNG).'; input.value = ''; return; }
+      var url = URL.createObjectURL(file);
+      var pic = new Image();
+      pic.onload = function () {
+        img.src = url; img.hidden = false; box.classList.add('has-img');
+        var scale = Math.min(1, MAX / Math.max(pic.width, pic.height));
+        if (scale === 1 && file.size < 1.5e6) { showSize(file.size); return; }   // already small
+        var c = document.createElement('canvas');
+        c.width = Math.round(pic.width * scale); c.height = Math.round(pic.height * scale);
+        c.getContext('2d').drawImage(pic, 0, 0, c.width, c.height);
+        c.toBlob(function (blob) {
+          if (!blob || !window.DataTransfer) { showSize(file.size); return; }
+          var smaller = new File([blob], (file.name.replace(/\.\w+$/, '') || 'photo') + '.jpg', { type: 'image/jpeg' });
+          var dt = new DataTransfer(); dt.items.add(smaller); input.files = dt.files;
+          showSize(smaller.size);
+        }, 'image/jpeg', 0.85);
+      };
+      pic.onerror = function () { showSize(file.size); };   // e.g. iPhone HEIC on some browsers: send as it is
+      pic.src = url;
+      var rm = box.querySelector('.pi-remove input'); if (rm) rm.checked = false;
+    });
+    function showSize(bytes) {
+      status.hidden = false;
+      status.textContent = 'Ready to upload (' + (bytes > 1e6 ? (bytes / 1e6).toFixed(1) + ' MB' : Math.round(bytes / 1e3) + ' KB') + '). It saves when you press the button below.';
+    }
+  });
+})();
+</script>
+{%- endmacro %}

@@ -55,42 +55,31 @@
       <div class="empty">No active orders right now.</div>
     {% endfor %}
 
-    <h2 style="margin-top:36px">Products</h2>
-    <div class="table-wrap">
-    <table class="table">
-      <thead><tr><th>Product</th><th class="num">Price</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-      {% for p in vendor.products %}
-        <tr>
-          <td>{{ p.name }}</td>
-          <td class="num">{{ p.price|ugx }}{% if p.unit %} / {{ p.unit }}{% endif %}</td>
-          <td>{% if p.in_stock %}<span class="tag">In stock</span>{% else %}<span class="tag off">Hidden</span>{% endif %}</td>
-          <td class="num">
-            <form class="inline-form" action="{{ url_for('vendor_toggle_product', product_id=p.id) }}" method="POST">
-              <button class="btn btn-light btn-small" type="submit">{{ 'Mark out of stock' if p.in_stock else 'Mark in stock' }}</button>
-            </form>
-          </td>
-        </tr>
-      {% else %}
-        <tr><td colspan="4" class="muted">No products yet. Add your first one below.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    </div>
+    <h2 style="margin-top:36px" id="products">Products <span class="muted">({{ vendor.products|length }})</span></h2>
+    {% for p in vendor.products %}
+      <div class="prod-row {{ 'hidden-prod' if not p.in_stock }}">
+        <div class="prod-thumb">{% if p.image_url %}<img src="{{ sized(p.image_url, 120, 120) }}" alt="" loading="lazy">{% else %}{{ icon('camera', 20) }}{% endif %}</div>
+        <div class="prod-info">
+          <strong>{{ p.name }}</strong>
+          <span class="muted">{{ p.price|ugx }}{% if p.unit %} / {{ p.unit }}{% endif %}</span>
+          {% if not p.in_stock %}<span class="tag off">Out of stock</span>{% endif %}
+        </div>
+        <div class="prod-actions">
+          <form action="{{ url_for('vendor_toggle_product', product_id=p.id) }}" method="POST">
+            <button class="btn btn-outline btn-small" type="submit">{{ 'Out of stock' if p.in_stock else 'Back in stock' }}</button>
+          </form>
+          <a class="btn btn-light btn-small" href="{{ url_for('vendor_edit_product', product_id=p.id) }}">Edit</a>
+        </div>
+      </div>
+    {% else %}
+      <div class="empty"><span class="empty-ico">{{ icon('basket', 28) }}</span><p>No products yet. Add your first one below.</p></div>
+    {% endfor %}
 
-    <form class="card" action="{{ url_for('vendor_add_product') }}" method="POST" style="margin-top:24px">
-      <h3>Add a product</h3>
-      <div class="row">
-        <div><label for="pname">Name</label><input id="pname" name="name" required></div>
-        <div><label for="pprice">Price (UGX)</label><input id="pprice" name="price" type="number" min="0" step="100" required></div>
-      </div>
-      <div class="row">
-        <div><label for="punit">Unit</label><input id="punit" name="unit" placeholder="kg, bunch, plate"></div>
-        <div><label for="pimage">Photo link (optional)</label><input id="pimage" name="image_url" placeholder="https://..."></div>
-      </div>
-      <label for="pdesc">Description (optional)</label>
-      <input id="pdesc" name="description">
-      <button class="btn" type="submit" style="width:auto">Add product</button>
+    <form class="card" action="{{ url_for('vendor_add_product') }}" method="POST" enctype="multipart/form-data" style="margin-top:24px" id="add-product">
+      <h3>{{ icon('plus', 20) }} Add a product</h3>
+      {% set p = none %}
+      {% include "_product_fields.html" %}
+      <button class="btn" type="submit" style="margin-top:18px">Add product</button>
     </form>
 
     {% if past %}

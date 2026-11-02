@@ -2,7 +2,7 @@
 {% block title %}Sell on {{ site_name }}{% endblock %}
 {% block content %}
 <div class="wrap">
-  <form class="card form-card wide" method="POST">
+  <form class="card form-card wide" method="POST" enctype="multipart/form-data">
     <h1>Open your shop</h1>
     <p class="muted">Tell customers who you are. You can add products straight away, and your shop goes live once we approve it. Your first month is free, then {{ trader_fee|ugx }} a month, with no commission on your sales.</p>
     {% set f = form %}

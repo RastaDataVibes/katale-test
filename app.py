@@ -12,6 +12,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from authlib.integrations.flask_client import OAuth
+import cloudinary
+import cloudinary.uploader
 from sqlalchemy import inspect, text
 from models import db, User, Vendor, Product, Order, OrderItem, STATUS_LABELS, distance_km
 
@@ -79,6 +81,58 @@ PHOTOS = {
     'Grains & cereals': 'v1793605589/pexels-macshamim-30689829_hcdbu3',
     'Restaurant':       'v1793605626/pexels-kenzero14-32228060_vooskg',
 }
+
+
+# ── Trader picture uploads (Cloudinary) ──────────────────────
+# Render's Environment has CLOUDINARY_URL = cloudinary://KEY:SECRET@dcostjy6h
+# The cloudinary library reads it by itself.
+CLOUDINARY_ON = bool(os.environ.get('CLOUDINARY_URL'))
+app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024   # refuse uploads bigger than 12 MB
+ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif'}
+
+
+class UploadError(Exception):
+    pass
+
+
+def upload_image(file, folder):
+    """Send one picture to Cloudinary, shrunk to at most 1200 px, and return its web address.
+    Returns None if no file was chosen. Raises UploadError with a friendly message if it fails."""
+    if not file or not file.filename:
+        return None
+    if file.mimetype not in ALLOWED_IMAGE_TYPES:
+        raise UploadError('That file is not a photo. Please choose a JPG or PNG picture.')
+    if not CLOUDINARY_ON:
+        raise UploadError('Photo uploads are not switched on yet (CLOUDINARY_URL is missing in Render).')
+    try:
+        result = cloudinary.uploader.upload(
+            file, folder=f'katale/{folder}', resource_type='image',
+            transformation=[{'width': 1200, 'height': 1200, 'crop': 'limit', 'quality': 'auto:good'}],
+        )
+    except Exception:
+        app.logger.exception('Cloudinary upload failed')
+        raise UploadError('The photo could not be uploaded. Please try again, or try a smaller picture.')
+    return result.get('secure_url')
+
+
+def delete_image(url):
+    """Remove an old Katale upload from Cloudinary (only ever touches the katale/ folder)."""
+    if not (CLOUDINARY_ON and url and '/upload/' in url and '/katale/' in url):
+        return
+    public_id = url.split('/upload/', 1)[1]
+    public_id = re.sub(r'^v\d+/', '', public_id).rsplit('.', 1)[0]
+    try:
+        cloudinary.uploader.destroy(public_id)
+    except Exception:
+        app.logger.warning('Could not delete old image %s', public_id)
+
+
+def sized(url, width=600, height=None):
+    """Ask Cloudinary for a smaller copy of an uploaded picture, cut to fit (for cards and thumbnails)."""
+    if not url or 'res.cloudinary.com' not in url or '/upload/' not in url:
+        return url
+    size = f'w_{width},h_{height},c_fill' if height else f'w_{width},c_limit'
+    return url.replace('/upload/', f'/upload/{size},q_auto,f_auto/', 1)
 
 
 def photo(key, width=800, height=None):
@@ -316,6 +370,8 @@ def inject_globals():
         delivery_fee=DELIVERY_FEE,
         trader_fee=TRADER_MONTHLY_FEE,
         photo=photo,
+        sized=sized,
+        uploads_on=CLOUDINARY_ON,
         customer_loc=get_location(),
         whatsapp_number=whatsapp_number,
         kampala=KAMPALA,
@@ -771,12 +827,22 @@ def read_shop_form(vendor, fallback_phone=None):
     vendor.description = request.form.get('description', '').strip()
     vendor.area = request.form.get('area', '').strip()[:120]
     vendor.phone = request.form.get('phone', '').strip() or fallback_phone
-    if 'image_url' in request.form:
-        vendor.image_url = request.form.get('image_url', '').strip()
     vendor.lat, vendor.lng = point
     vendor.delivery_radius_km = number('delivery_radius_km', 5, 0.5, 30)
     vendor.delivery_base_fee = int(number('delivery_base_fee', 2000, 0, 50000))
     vendor.delivery_per_km = int(number('delivery_per_km', 1000, 0, 10000))
+
+    # Shop photo: a new upload replaces the old one; "remove" clears it
+    try:
+        new_url = upload_image(request.files.get('photo'), 'shops')
+    except UploadError as e:
+        return str(e)
+    if new_url:
+        delete_image(vendor.image_url)
+        vendor.image_url = new_url
+    elif request.form.get('remove_photo'):
+        delete_image(vendor.image_url)
+        vendor.image_url = None
     return None
 
 
@@ -832,27 +898,82 @@ def vendor_dashboard():
                            next_statuses=VENDOR_NEXT_STATUS)
 
 
-@app.route('/vendor/products/add', methods=['POST'])
-@vendor_required
-def vendor_add_product():
-    vendor = get_current_user().vendor
+def read_product_form(product):
+    """Copy the product form onto a product. Returns an error message or None."""
     name = request.form.get('name', '').strip()
     try:
         price = float(request.form.get('price', ''))
     except ValueError:
         price = -1
     if not name or price < 0:
-        flash('Please give the product a name and a valid price.', 'error')
-        return redirect(url_for('vendor_dashboard'))
-    db.session.add(Product(
-        vendor_id=vendor.id, name=name, price=price,
-        unit=request.form.get('unit', '').strip(),
-        description=request.form.get('description', '').strip(),
-        image_url=request.form.get('image_url', '').strip(),
-    ))
+        return 'Please give the product a name and a valid price.'
+    product.name = name[:150]
+    product.price = price
+    product.unit = request.form.get('unit', '').strip()[:40]
+    product.description = request.form.get('description', '').strip()
+    try:
+        new_url = upload_image(request.files.get('photo'), 'products')
+    except UploadError as e:
+        return str(e)
+    if new_url:
+        delete_image(product.image_url)
+        product.image_url = new_url
+    elif request.form.get('remove_photo'):
+        delete_image(product.image_url)
+        product.image_url = None
+    return None
+
+
+@app.route('/vendor/products/add', methods=['POST'])
+@vendor_required
+def vendor_add_product():
+    vendor = get_current_user().vendor
+    product = Product(vendor_id=vendor.id)
+    error = read_product_form(product)
+    if error:
+        flash(error, 'error')
+        return redirect(url_for('vendor_dashboard') + '#add-product')
+    db.session.add(product)
     db.session.commit()
-    flash(f'"{name}" added.', 'success')
-    return redirect(url_for('vendor_dashboard'))
+    flash(f'"{product.name}" added.', 'success')
+    return redirect(url_for('vendor_dashboard') + '#products')
+
+
+@app.route('/vendor/products/<int:product_id>/edit', methods=['GET', 'POST'])
+@vendor_required
+def vendor_edit_product(product_id):
+    vendor = get_current_user().vendor
+    product = Product.query.filter_by(id=product_id, vendor_id=vendor.id).first_or_404()
+    if request.method == 'POST':
+        error = read_product_form(product)
+        if error:
+            db.session.rollback()
+            flash(error, 'error')
+            return redirect(url_for('vendor_edit_product', product_id=product.id))
+        db.session.commit()
+        flash(f'"{product.name}" saved.', 'success')
+        return redirect(url_for('vendor_dashboard') + '#products')
+    return render_template('vendor_product.html', product=product)
+
+
+@app.route('/vendor/products/<int:product_id>/delete', methods=['POST'])
+@vendor_required
+def vendor_delete_product(product_id):
+    vendor = get_current_user().vendor
+    product = Product.query.filter_by(id=product_id, vendor_id=vendor.id).first_or_404()
+    # Old orders keep their own copy of the name and price, so we just unlink them
+    OrderItem.query.filter_by(product_id=product.id).update({'product_id': None})
+    delete_image(product.image_url)
+    name = product.name
+    db.session.delete(product)
+    db.session.commit()
+    # Take it out of anyone's cart too
+    cart = _get_cart()
+    if str(product_id) in cart['items']:
+        cart['items'].pop(str(product_id))
+        session['cart'] = cart
+    flash(f'"{name}" deleted.', 'success')
+    return redirect(url_for('vendor_dashboard') + '#products')
 
 
 @app.route('/vendor/products/<int:product_id>/toggle', methods=['POST'])

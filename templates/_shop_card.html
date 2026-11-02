@@ -2,7 +2,7 @@
 <a href="{{ url_for('shop_detail', slug=v.slug) }}" class="shop-card {{ 'closed' if not v.is_open }}">
   <div class="thumb">
     {% if v.image_url %}
-      <img src="{{ v.image_url }}" alt="{{ v.name }}" loading="lazy">
+      <img src="{{ sized(v.image_url, 600, 360) }}" alt="{{ v.name }}" loading="lazy">
     {% elif photo(v.category) %}
       <img src="{{ photo(v.category, 600, 360) }}" alt="" loading="lazy">
     {% else %}

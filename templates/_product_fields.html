@@ -1,0 +1,15 @@
+{# Product form fields, used by "Add a product" and "Edit product". `p` = the product (or none). #}
+{% from "_photo_input.html" import photo_input with context %}
+<div class="product-form">
+  <div class="pf-photo">{{ photo_input('photo', p.image_url if p else none, label='Product photo') }}</div>
+  <div class="pf-fields">
+    <label for="pname">Name</label>
+    <input id="pname" name="name" value="{{ p.name if p else '' }}" placeholder="e.g. Matooke" required>
+    <div class="row">
+      <div><label for="pprice">Price (UGX)</label><input id="pprice" name="price" type="number" min="0" step="100" value="{{ p.price|int if p else '' }}" required></div>
+      <div><label for="punit">Per</label><input id="punit" name="unit" value="{{ p.unit if p and p.unit else '' }}" placeholder="kg, bunch, plate"></div>
+    </div>
+    <label for="pdesc">Description <span class="opt">(optional)</span></label>
+    <input id="pdesc" name="description" value="{{ p.description if p and p.description else '' }}" placeholder="e.g. Fresh from Mbarara, medium size">
+  </div>
+</div>

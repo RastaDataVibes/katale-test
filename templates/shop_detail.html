@@ -10,7 +10,7 @@
 
     <div class="shop-hero">
       <div class="shop-hero-img">
-        {% if vendor.image_url %}<img src="{{ vendor.image_url }}" alt="{{ vendor.name }}">
+        {% if vendor.image_url %}<img src="{{ sized(vendor.image_url, 1200, 420) }}" alt="{{ vendor.name }}">
         {% elif photo(vendor.category) %}<img src="{{ photo(vendor.category, 1200, 420) }}" alt="">
         {% endif %}
       </div>
@@ -46,7 +46,7 @@
         {% for p in products %}
         <div class="product-card">
           <div class="thumb">
-            {% if p.image_url %}<img src="{{ p.image_url }}" alt="{{ p.name }}" loading="lazy">{% else %}<span class="thumb-letter">{{ p.name[0]|upper }}</span>{% endif %}
+            {% if p.image_url %}<img src="{{ sized(p.image_url, 600, 400) }}" alt="{{ p.name }}" loading="lazy">{% else %}<span class="thumb-letter">{{ p.name[0]|upper }}</span>{% endif %}
           </div>
           <div class="card-body">
             <h3>{{ p.name }}</h3>

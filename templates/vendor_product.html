@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Edit {{ product.name }} | {{ site_name }}{% endblock %}
+{% block content %}
+<div class="wrap">
+  <form class="card form-card wide" method="POST" enctype="multipart/form-data">
+    <a class="text-link" href="{{ url_for('vendor_dashboard') }}#products">&larr; Back to my shop</a>
+    <h1 style="margin-top:10px">Edit product</h1>
+    {% set p = product %}
+    {% include "_product_fields.html" %}
+    <button class="btn" type="submit">Save changes</button>
+  </form>
+  <form method="POST" action="{{ url_for('vendor_delete_product', product_id=product.id) }}" class="form-card wide" style="margin-top:-12px;text-align:center"
+        onsubmit="return confirm('Delete {{ product.name|e }}? This cannot be undone.');">
+    <button class="btn btn-danger btn-small" type="submit">{{ icon('trash', 16) }} Delete this product</button>
+  </form>
+</div>
+{% endblock %}
