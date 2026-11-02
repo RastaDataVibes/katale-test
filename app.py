@@ -63,7 +63,7 @@ DELIVERY_FEE = 5000  # UGX, only used for shops that have not pinned their locat
 KAMPALA = (0.3476, 32.5825)  # where maps start if we know nothing else
 TRADER_MONTHLY_FEE = 30000  # UGX per month, first month free (step 5 adds the payments)
 
-VENDOR_CATEGORIES = ['Groceries', 'Fresh produce', 'Meat & fish', 'Grains & cereals',
+VENDOR_CATEGORIES = ['Chicken & poultry', 'Groceries', 'Fresh produce', 'Meat & fish', 'Grains & cereals',
                      'Restaurant', 'Pharmacy', 'Household', 'Other']
 
 # ── Photos (stored on Cloudinary) ────────────────────────────
@@ -77,9 +77,9 @@ PHOTOS = {
     'shopfront':   'v1793605635/pexels-hoteles-sublimes-655848650-26309839_lsur0z',  # shop shelves
     'Groceries':        'v1793605635/pexels-hoteles-sublimes-655848650-26309839_lsur0z',
     'Fresh produce':    'v1793605597/pexels-liza-sigareva-2149951107-34066399_fp8b1u',
-    'Meat & fish':      'v1793605606/pexels-laudiatsr-10886018_xlxrz7',
+    'Chicken & poultry': 'v1793605606/pexels-laudiatsr-10886018_xlxrz7',   # packed whole chickens
+    'Meat & fish':      'v1793605626/pexels-kenzero14-32228060_vooskg',     # sausages
     'Grains & cereals': 'v1793605589/pexels-macshamim-30689829_hcdbu3',
-    'Restaurant':       'v1793605626/pexels-kenzero14-32228060_vooskg',
 }
 
 
