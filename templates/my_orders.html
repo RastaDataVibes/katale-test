@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}My orders | {{ site_name }}{% endblock %}
 {% block content %}
 <section>
@@ -13,7 +14,7 @@
         <span class="muted">{{ o.date_placed.strftime('%d %b %Y') }} &middot; {{ o.items|length }} item(s) &middot; {{ o.total|ugx }}</span>
       </a>
     {% else %}
-      <div class="empty">You have not ordered anything yet. <a class="tag" href="{{ url_for('shops') }}">Browse shops</a></div>
+      <div class="empty"><span class="empty-ico">{{ icon('orders', 28) }}</span><p>You have not ordered anything yet.</p><a class="btn" href="{{ url_for('shops') }}">Browse shops</a></div>
     {% endfor %}
   </div>
 </section>

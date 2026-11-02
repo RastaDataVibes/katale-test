@@ -1,24 +1,41 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, category_icon %}
 {% block title %}{{ vendor.name }} | {{ site_name }}{% endblock %}
 {% block content %}
 <section>
   <div class="wrap">
     {% if not vendor.is_approved %}
-      <div class="flash flash-error" style="margin-bottom:20px">This shop is waiting for approval. Only you and the admin can see it.</div>
+      <div class="flash flash-error" style="margin-bottom:20px">{{ icon('info', 18) }} <span>This shop is waiting for approval. Only you and the admin can see it.</span></div>
     {% endif %}
-    <h1>{{ vendor.name }}</h1>
-    <p class="muted">{{ vendor.area or 'Kampala' }}{% if vendor.category %} &middot; {{ vendor.category }}{% endif %}
-      {% if vendor.phone %} &middot; {{ vendor.phone }}{% endif %}</p>
-    {% if vendor.description %}<p style="max-width:640px;margin-top:10px">{{ vendor.description }}</p>{% endif %}
-    <p style="margin:12px 0 28px">
-      {% if vendor.is_open %}<span class="tag">Open for orders</span>{% else %}<span class="tag off">Closed right now</span>{% endif %}
-    </p>
 
+    <div class="shop-hero">
+      <div class="shop-hero-img">
+        {% if vendor.image_url %}<img src="{{ vendor.image_url }}" alt="{{ vendor.name }}">
+        {% elif photo(vendor.category) %}<img src="{{ photo(vendor.category, 1200, 420) }}" alt="">
+        {% endif %}
+      </div>
+      <div class="shop-hero-body">
+        <h1>{{ vendor.name }}</h1>
+        <div class="meta">
+          <span>{{ icon('pin', 16) }} {{ vendor.area or 'Kampala' }}</span>
+          {% if vendor.category %}<span>{{ category_icon(vendor.category, 16) }} {{ vendor.category }}</span>{% endif %}
+          {% if vendor.phone %}<span>{{ icon('phone', 16) }} {{ vendor.phone }}</span>{% endif %}
+        </div>
+        {% if vendor.description %}<p class="shop-desc">{{ vendor.description }}</p>{% endif %}
+        <div style="margin-top:10px">
+          {% if vendor.is_open %}<span class="tag">{{ icon('check', 14) }} Open for orders</span>{% else %}<span class="tag off">Closed right now</span>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <h2 style="margin-top:28px">Products</h2>
     {% if products %}
       <div class="grid">
         {% for p in products %}
         <div class="product-card">
-          <div class="thumb">{% if p.image_url %}<img src="{{ p.image_url }}" alt="{{ p.name }}">{% else %}{{ p.name[0]|upper }}{% endif %}</div>
+          <div class="thumb">
+            {% if p.image_url %}<img src="{{ p.image_url }}" alt="{{ p.name }}" loading="lazy">{% else %}<span class="thumb-letter">{{ p.name[0]|upper }}</span>{% endif %}
+          </div>
           <div class="card-body">
             <h3>{{ p.name }}</h3>
             {% if p.description %}<span class="muted">{{ p.description }}</span>{% endif %}
@@ -27,7 +44,7 @@
               <form class="add-form" action="{{ url_for('cart_add') }}" method="POST">
                 <input type="hidden" name="product_id" value="{{ p.id }}">
                 <input type="number" name="qty" value="1" min="1" max="50" aria-label="Quantity">
-                <button class="btn btn-small" type="submit">Add to cart</button>
+                <button class="btn btn-small" type="submit">{{ icon('plus', 16) }} Add</button>
               </form>
             {% else %}
               <span class="tag off" style="margin-top:auto">Unavailable</span>
@@ -37,7 +54,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty">This shop has not added any products yet.</div>
+      <div class="empty"><span class="empty-ico">{{ icon('basket', 28) }}</span><p>This shop has not added any products yet.</p></div>
     {% endif %}
   </div>
 </section>

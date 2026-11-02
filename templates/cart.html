@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Your cart | {{ site_name }}{% endblock %}
 {% block content %}
 <section>
   <div class="wrap">
     <h1>Your cart</h1>
     {% if cart.lines %}
-      <p class="muted" style="margin-bottom:20px">Ordering from <a class="tag" href="{{ url_for('shop_detail', slug=cart.vendor.slug) }}">{{ cart.vendor.name }}</a></p>
+      <p class="muted" style="margin-bottom:20px">Ordering from <a class="text-link" href="{{ url_for('shop_detail', slug=cart.vendor.slug) }}">{{ cart.vendor.name }}</a></p>
       <div class="table-wrap">
       <table class="table">
         <thead><tr><th>Item</th><th class="num">Price</th><th>Quantity</th><th class="num">Total</th></tr></thead>
@@ -35,10 +36,10 @@
       </div>
       <div class="actions" style="justify-content:flex-end">
         <form action="{{ url_for('cart_clear') }}" method="POST"><button class="btn btn-danger" type="submit">Clear cart</button></form>
-        <a class="btn" href="{{ url_for('checkout') }}">Checkout</a>
+        <a class="btn" href="{{ url_for('checkout') }}">Go to checkout {{ icon('arrow-right', 18) }}</a>
       </div>
     {% else %}
-      <div class="empty">Your cart is empty. <a class="tag" href="{{ url_for('shops') }}">Browse shops</a></div>
+      <div class="empty"><span class="empty-ico">{{ icon('cart', 28) }}</span><p>Your cart is empty.</p><a class="btn" href="{{ url_for('shops') }}">Browse shops</a></div>
     {% endif %}
   </div>
 </section>

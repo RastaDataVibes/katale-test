@@ -1,39 +1,132 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon, category_icon %}
 {% block content %}
+
+{# ── Big banner ──────────────────────────────────────── #}
 <section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-text">
+      <span class="eyebrow"><i class="dot"></i> Kampala's online market</span>
+      <h1>Your market,<br><span class="accent">delivered.</span></h1>
+      <p class="lead">Order groceries, fresh produce, meat, food and more from shops near you. Pay with cash or mobile money when it arrives.</p>
+
+      <form class="hero-search" action="{{ url_for('shops') }}" method="GET" role="search">
+        {{ icon('search', 20) }}
+        <input type="search" name="q" placeholder="What do you need today?" aria-label="Search">
+        <button class="btn" type="submit">Search</button>
+      </form>
+
+      <div class="hero-points">
+        <span>{{ icon('pin', 18) }} Shops near you</span>
+        <span>{{ icon('cash', 18) }} Pay on delivery</span>
+        <span>{{ icon('phone', 18) }} Mobile money</span>
+      </div>
+    </div>
+
+    <div class="hero-photo">
+      <img src="{{ photo('hero', 900, 1000) }}" alt="A rider delivering fresh groceries" width="450" height="500">
+      <div class="float-card fc-top">
+        <span class="fc-ico">{{ icon('check-circle', 20) }}</span>
+        <div><strong>Order accepted</strong><span>Being prepared now</span></div>
+      </div>
+      <div class="float-card fc-bottom">
+        <span class="fc-ico gold">{{ icon('bike', 20) }}</span>
+        <div><strong>Katale riders</strong><span>Coming soon</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ── Categories ──────────────────────────────────────── #}
+<section class="section">
   <div class="wrap">
-    <h1>Fresh food and everyday goods, delivered across Kampala.</h1>
-    <p>Order from local shops, farms and kitchens. Pay with cash or mobile money when it arrives.</p>
-    <form class="search-bar" action="{{ url_for('shops') }}" method="GET">
-      <input type="text" name="q" placeholder="Search shops, food or area">
-      <button class="btn" type="submit">Search</button>
-    </form>
-    <div class="chips">
+    <div class="section-head">
+      <h2>Shop by category</h2>
+      <a href="{{ url_for('shops') }}" class="link-more">All shops {{ icon('arrow-right', 16) }}</a>
+    </div>
+    <div class="cat-grid">
       {% for c in vendor_categories %}
-        <a class="chip" href="{{ url_for('shops', category=c) }}">{{ c }}</a>
+        <a href="{{ url_for('shops', category=c) }}" class="cat-tile {{ 'has-photo' if photo(c) }}">
+          {% if photo(c) %}
+            <img src="{{ photo(c, 400, 300) }}" alt="" loading="lazy" width="200" height="150">
+          {% endif %}
+          <span class="cat-label"><span class="cat-ico">{{ category_icon(c, 18) }}</span>{{ c }}</span>
+        </a>
       {% endfor %}
     </div>
   </div>
 </section>
 
-<section>
+{# ── Shops open now ──────────────────────────────────── #}
+<section class="section tight">
   <div class="wrap">
-    <h2>Open now</h2>
+    <div class="section-head">
+      <h2>Open now</h2>
+      {% if featured %}<a href="{{ url_for('shops') }}" class="link-more">See all {{ icon('arrow-right', 16) }}</a>{% endif %}
+    </div>
     {% if featured %}
       <div class="grid">
         {% for v in featured %}{% include "_shop_card.html" %}{% endfor %}
       </div>
     {% else %}
-      <div class="empty">No shops are open yet. Be the first to <a class="tag" href="{{ url_for('vendor_apply') }}">open a shop</a>.</div>
+      <div class="empty">
+        <span class="empty-ico">{{ icon('shop', 28) }}</span>
+        <p>No shops are open yet. Be one of the first traders on {{ site_name }}.</p>
+        <a class="btn" href="{{ url_for('vendor_apply') }}">Open your shop</a>
+      </div>
     {% endif %}
   </div>
 </section>
 
-<section class="cta">
+{# ── How it works ────────────────────────────────────── #}
+<section class="section how">
   <div class="wrap">
-    <h2>Have something to sell?</h2>
-    <p>List your shop, add your products and start receiving orders from customers near you.</p>
-    <a class="btn" href="{{ url_for('vendor_apply') }}">Start selling</a>
+    <div class="section-head center">
+      <span class="eyebrow"><i class="dot"></i> How it works</span>
+      <h2>Groceries at your door in 3 steps</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-photo"><img src="{{ photo('phone_order', 600, 420) }}" alt="" loading="lazy" width="300" height="210"><span class="step-no">1</span></div>
+        <h3>Find a shop near you</h3>
+        <p>Search or browse by category. You only see shops that deliver to where you are.</p>
+      </div>
+      <div class="step">
+        <div class="step-photo"><img src="{{ photo('Fresh produce', 600, 420) }}" alt="" loading="lazy" width="300" height="210"><span class="step-no">2</span></div>
+        <h3>Fill your cart</h3>
+        <p>Pick what you need, tell us where to deliver, and place your order. No card needed.</p>
+      </div>
+      <div class="step">
+        <div class="step-photo"><img src="{{ photo('bag', 600, 420) }}" alt="" loading="lazy" width="300" height="210"><span class="step-no">3</span></div>
+        <h3>Pay when it arrives</h3>
+        <p>The shop delivers to your door. Pay with cash or mobile money when you receive it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ── For traders ─────────────────────────────────────── #}
+<section class="section">
+  <div class="wrap">
+    <div class="sell-band">
+      <div class="sell-text">
+        <span class="eyebrow light"><i class="dot"></i> For traders</span>
+        <h2>Sell to customers across Kampala</h2>
+        <p>Open your shop online in minutes. Keep every shilling you sell: we never take a cut of your sales.</p>
+        <div class="price-line">
+          <span class="price-big">{{ trader_fee|ugx }}</span><span class="per">/ month</span>
+        </div>
+        <ul class="ticks">
+          <li>{{ icon('check', 18) }} First month free</li>
+          <li>{{ icon('check', 18) }} No commission on any order</li>
+          <li>{{ icon('check', 18) }} Customers near you find your shop</li>
+        </ul>
+        <a class="btn btn-light-on-dark" href="{{ url_for('vendor_apply') }}">Start selling {{ icon('arrow-right', 18) }}</a>
+      </div>
+      <div class="sell-photo">
+        <img src="{{ photo('shopfront', 800, 700) }}" alt="A shop with fresh food on its shelves" loading="lazy" width="400" height="350">
+      </div>
+    </div>
   </div>
 </section>
 {% endblock %}

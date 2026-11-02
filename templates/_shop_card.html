@@ -1,10 +1,20 @@
-<a href="{{ url_for('shop_detail', slug=v.slug) }}" class="shop-card">
-  <div class="thumb">{% if v.image_url %}<img src="{{ v.image_url }}" alt="{{ v.name }}">{% else %}{{ v.name[0]|upper }}{% endif %}</div>
+{% from "_icons.html" import icon, category_icon %}
+<a href="{{ url_for('shop_detail', slug=v.slug) }}" class="shop-card {{ 'closed' if not v.is_open }}">
+  <div class="thumb">
+    {% if v.image_url %}
+      <img src="{{ v.image_url }}" alt="{{ v.name }}" loading="lazy">
+    {% elif photo(v.category) %}
+      <img src="{{ photo(v.category, 600, 360) }}" alt="" loading="lazy">
+    {% else %}
+      <span class="thumb-letter">{{ v.name[0]|upper }}</span>
+    {% endif %}
+    {% if v.is_open %}<span class="badge-open">Open</span>{% else %}<span class="badge-closed">Closed</span>{% endif %}
+  </div>
   <div class="card-body">
     <h3>{{ v.name }}</h3>
-    <span class="muted">{{ v.area or 'Kampala' }}{% if v.category %} &middot; {{ v.category }}{% endif %}</span>
-    <div style="margin-top:8px">
-      {% if v.is_open %}<span class="tag">Open</span>{% else %}<span class="tag off">Closed</span>{% endif %}
+    <div class="meta">
+      <span>{{ icon('pin', 15) }} {{ v.area or 'Kampala' }}</span>
+      {% if v.category %}<span>{{ category_icon(v.category, 15) }} {{ v.category }}</span>{% endif %}
     </div>
   </div>
 </a>

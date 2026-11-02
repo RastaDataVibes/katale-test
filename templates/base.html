@@ -1,45 +1,143 @@
+{% from "_icons.html" import icon %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}{{ site_name }}{% endblock %}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>{% block title %}{{ site_name }} — Kampala's online market{% endblock %}</title>
+  <meta name="description" content="Order groceries, fresh produce, meat, food and more from shops near you. Delivered to your door.">
+  <meta name="theme-color" content="#1a3d2b">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://res.cloudinary.com">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2">
+  {% block head %}{% endblock %}
 </head>
-<body>
-<header class="site-header">
-  <div class="header-inner">
-    <a href="{{ url_for('home') }}" class="logo">{{ site_name }}</a>
-    <nav class="nav">
-      <a href="{{ url_for('shops') }}">Shops</a>
+<body class="{% block body_class %}{% endblock %}">
+
+{# ── Top bar ─────────────────────────────────────────── #}
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="{{ url_for('home') }}" class="brand" aria-label="{{ site_name }} home">
+      <img src="{{ url_for('static', filename='img/gc-logo.svg') }}" alt="" width="38" height="38">
+      <span class="brand-name">Kat<em>ale</em></span>
+    </a>
+
+    <form class="top-search" action="{{ url_for('shops') }}" method="GET" role="search">
+      {{ icon('search', 18) }}
+      <input type="search" name="q" placeholder="Search shops, food or area" value="{{ request.args.get('q', '') }}" aria-label="Search">
+    </form>
+
+    <nav class="top-links">
+      <a href="{{ url_for('shops') }}" class="top-link">{{ icon('shop') }}<span>Shops</span></a>
       {% if current_user %}
-        <a href="{{ url_for('my_orders') }}">My orders</a>
-        {% if current_user.vendor %}<a href="{{ url_for('vendor_dashboard') }}">My shop</a>
-        {% else %}<a href="{{ url_for('vendor_apply') }}">Sell on {{ site_name }}</a>{% endif %}
-        {% if current_user.is_admin %}<a href="{{ url_for('admin_dashboard') }}">Admin</a>{% endif %}
-        <a href="{{ url_for('logout') }}">Log out</a>
-      {% else %}
-        <a href="{{ url_for('login') }}">Log in</a>
-        <a href="{{ url_for('register') }}">Sign up</a>
+        <a href="{{ url_for('my_orders') }}" class="top-link">{{ icon('orders') }}<span>Orders</span></a>
+        {% if current_user.vendor %}
+          <a href="{{ url_for('vendor_dashboard') }}" class="top-link">{{ icon('store-open') }}<span>My shop</span></a>
+        {% endif %}
+        {% if current_user.is_admin %}
+          <a href="{{ url_for('admin_dashboard') }}" class="top-link">{{ icon('shield') }}<span>Admin</span></a>
+        {% endif %}
       {% endif %}
-      <a href="{{ url_for('cart') }}" class="cart-pill">Cart ({{ cart_count }})</a>
     </nav>
+
+    <a href="{{ url_for('cart') }}" class="cart-btn" aria-label="Cart, {{ cart_count }} items">
+      {{ icon('cart', 22) }}
+      {% if cart_count %}<span class="cart-count">{{ cart_count }}</span>{% endif %}
+    </a>
+
+    {% if current_user %}
+      <details class="account">
+        <summary class="avatar" aria-label="Account menu">{{ current_user.name[0]|upper }}</summary>
+        <div class="account-menu">
+          <div class="account-head">
+            <strong>{{ current_user.name }}</strong>
+            <span class="muted">{{ current_user.email }}</span>
+          </div>
+          <a href="{{ url_for('my_orders') }}">{{ icon('orders', 18) }} My orders</a>
+          {% if current_user.vendor %}
+            <a href="{{ url_for('vendor_dashboard') }}">{{ icon('store-open', 18) }} My shop</a>
+          {% else %}
+            <a href="{{ url_for('vendor_apply') }}">{{ icon('shop', 18) }} Sell on {{ site_name }}</a>
+          {% endif %}
+          {% if current_user.is_admin %}
+            <a href="{{ url_for('admin_dashboard') }}">{{ icon('shield', 18) }} Admin</a>
+          {% endif %}
+          <a href="{{ url_for('logout') }}" class="danger">{{ icon('logout', 18) }} Log out</a>
+        </div>
+      </details>
+    {% else %}
+      <a href="{{ url_for('login') }}" class="btn btn-small btn-dark top-login">Log in</a>
+    {% endif %}
   </div>
 </header>
 
-<div class="wrap">
-  {% with messages = get_flashed_messages(with_categories=true) %}
+{# ── Messages (e.g. "Added to cart") ─────────────────── #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="wrap flashes">
     {% for category, message in messages %}
-      <div class="flash flash-{{ category }}">{{ message }}</div>
+      <div class="flash flash-{{ category }}">
+        {{ icon('check-circle' if category == 'success' else 'info', 18) }}
+        <span>{{ message }}</span>
+      </div>
     {% endfor %}
-  {% endwith %}
-</div>
+  </div>
+  {% endif %}
+{% endwith %}
 
+<main>
 {% block content %}{% endblock %}
+</main>
 
+{# ── Footer ──────────────────────────────────────────── #}
 <footer class="site-footer">
-  <div class="wrap">&copy; {{ current_year }} {{ site_name }}. Made in Uganda.</div>
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <img src="{{ url_for('static', filename='img/gc-logo.svg') }}" alt="" width="34" height="34">
+      <div>
+        <span class="brand-name light">Kat<em>ale</em></span>
+        <p>Your local market, delivered. A Gridcraft product, made in Uganda.</p>
+      </div>
+    </div>
+    <div class="footer-links">
+      <a href="{{ url_for('shops') }}">Browse shops</a>
+      <a href="{{ url_for('vendor_apply') }}">Sell on {{ site_name }}</a>
+      {% if not current_user %}<a href="{{ url_for('register') }}">Create an account</a>{% endif %}
+    </div>
+  </div>
+  <div class="wrap footer-bottom">&copy; {{ current_year }} Gridcraft Limited. All rights reserved.</div>
 </footer>
+
+{# ── Phone bottom bar (only shows on small screens) ──── #}
+{% set ep = request.endpoint or '' %}
+<nav class="bottom-nav" aria-label="Main">
+  <a href="{{ url_for('home') }}" class="{{ 'on' if ep == 'home' }}">{{ icon('home', 22) }}<span>Home</span></a>
+  <a href="{{ url_for('shops') }}" class="{{ 'on' if ep in ('shops', 'shop_detail') }}">{{ icon('shop', 22) }}<span>Shops</span></a>
+  <a href="{{ url_for('cart') }}" class="{{ 'on' if ep in ('cart', 'checkout') }}">
+    <span class="bn-ico">{{ icon('cart', 22) }}{% if cart_count %}<i>{{ cart_count }}</i>{% endif %}</span><span>Cart</span>
+  </a>
+  <a href="{{ url_for('my_orders') }}" class="{{ 'on' if ep in ('my_orders', 'order_detail') }}">{{ icon('orders', 22) }}<span>Orders</span></a>
+  {% if current_user and current_user.vendor %}
+    <a href="{{ url_for('vendor_dashboard') }}" class="{{ 'on' if ep.startswith('vendor') }}">{{ icon('store-open', 22) }}<span>My shop</span></a>
+  {% elif current_user %}
+    <a href="{{ url_for('vendor_apply') }}" class="{{ 'on' if ep == 'vendor_apply' }}">{{ icon('tag', 22) }}<span>Sell</span></a>
+  {% else %}
+    <a href="{{ url_for('login') }}" class="{{ 'on' if ep in ('login', 'register') }}">{{ icon('user', 22) }}<span>Log in</span></a>
+  {% endif %}
+</nav>
+
+<script>
+  // Close the account menu when you tap anywhere else
+  document.addEventListener('click', function (e) {
+    document.querySelectorAll('details.account[open]').forEach(function (d) {
+      if (!d.contains(e.target)) d.removeAttribute('open');
+    });
+  });
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

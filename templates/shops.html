@@ -1,24 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Shops | {{ site_name }}{% endblock %}
+{% from "_icons.html" import icon, category_icon %}
+{% block title %}{{ category or 'Shops' }} | {{ site_name }}{% endblock %}
 {% block content %}
 <section>
   <div class="wrap">
-    <h1>Shops</h1>
-    <form class="search-bar" action="{{ url_for('shops') }}" method="GET" style="margin-bottom:16px">
-      <input type="text" name="q" value="{{ q }}" placeholder="Search shops, food or area">
+    <h1>{{ category or 'All shops' }}</h1>
+    <form class="hero-search" action="{{ url_for('shops') }}" method="GET" role="search" style="margin-bottom:16px;max-width:none">
+      {{ icon('search', 20) }}
+      <input type="search" name="q" value="{{ q }}" placeholder="Search shops, food or area" aria-label="Search">
       {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
       <button class="btn" type="submit">Search</button>
     </form>
-    <div class="chips" style="margin:0 0 28px">
-      <a class="chip dark {% if not category %}active{% endif %}" href="{{ url_for('shops', q=q) }}">All</a>
+    <div class="chips" style="margin:0 0 24px">
+      <a class="chip {% if not category %}active{% endif %}" href="{{ url_for('shops', q=q) }}">{{ icon('grid', 16) }} All</a>
       {% for c in vendor_categories %}
-        <a class="chip dark {% if category == c %}active{% endif %}" href="{{ url_for('shops', category=c, q=q) }}">{{ c }}</a>
+        <a class="chip {% if category == c %}active{% endif %}" href="{{ url_for('shops', category=c, q=q) }}">{{ category_icon(c, 16) }} {{ c }}</a>
       {% endfor %}
     </div>
+    {% if q %}<p class="muted" style="margin:-8px 0 16px">{{ vendors|length }} result{{ '' if vendors|length == 1 else 's' }} for "{{ q }}"</p>{% endif %}
     {% if vendors %}
       <div class="grid">{% for v in vendors %}{% include "_shop_card.html" %}{% endfor %}</div>
     {% else %}
-      <div class="empty">No shops match that search. Try a different word or category.</div>
+      <div class="empty">
+        <span class="empty-ico">{{ icon('search', 28) }}</span>
+        <p>No shops match that yet. Try a different word or category.</p>
+        <a class="btn btn-light" href="{{ url_for('shops') }}">See all shops</a>
+      </div>
     {% endif %}
   </div>
 </section>

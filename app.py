@@ -26,12 +26,37 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-change-me')
 
-SITE_NAME = 'Paul'
+SITE_NAME = 'Katale'
 ADMIN_EMAIL = (os.environ.get('ADMIN_EMAIL') or '').strip().lower()
-DELIVERY_FEE = 5000  # UGX, flat for now
+DELIVERY_FEE = 5000  # UGX, flat for now (step 3 will work it out from the distance)
+TRADER_MONTHLY_FEE = 30000  # UGX per month, first month free (step 5 adds the payments)
 
-VENDOR_CATEGORIES = ['Groceries', 'Fresh produce', 'Meat & fish', 'Restaurant',
-                     'Pharmacy', 'Household', 'Other']
+VENDOR_CATEGORIES = ['Groceries', 'Fresh produce', 'Meat & fish', 'Grains & cereals',
+                     'Restaurant', 'Pharmacy', 'Household', 'Other']
+
+# ── Photos (stored on Cloudinary) ────────────────────────────
+# photo('key', width) gives a link to the photo, already shrunk to that width,
+# so pages stay fast on mobile data.
+CLOUDINARY_BASE = 'https://res.cloudinary.com/dcostjy6h/image/upload'
+PHOTOS = {
+    'hero':        'v1793605614/pexels-kindelmedia-6868967_y1s5ku',       # rider on a bicycle
+    'bag':         'v1793605566/pexels-rdne-7363163_ocu6uf',              # "we deliver" shopping bag
+    'phone_order': 'v1793605579/pexels-n-voitkevich-8939513_ennhoe',      # ordering on a phone
+    'shopfront':   'v1793605635/pexels-hoteles-sublimes-655848650-26309839_lsur0z',  # shop shelves
+    'Groceries':        'v1793605635/pexels-hoteles-sublimes-655848650-26309839_lsur0z',
+    'Fresh produce':    'v1793605597/pexels-liza-sigareva-2149951107-34066399_fp8b1u',
+    'Meat & fish':      'v1793605606/pexels-laudiatsr-10886018_xlxrz7',
+    'Grains & cereals': 'v1793605589/pexels-macshamim-30689829_hcdbu3',
+    'Restaurant':       'v1793605626/pexels-kenzero14-32228060_vooskg',
+}
+
+
+def photo(key, width=800, height=None):
+    public_id = PHOTOS.get(key)
+    if not public_id:
+        return None
+    size = f'w_{width},h_{height},c_fill' if height else f'w_{width},c_limit'
+    return f'{CLOUDINARY_BASE}/{size},q_auto,f_auto/{public_id}.jpg'
 PAYMENT_METHODS = {'cash': 'Cash on delivery', 'mobile_money': 'Mobile money on delivery'}
 
 # What a vendor is allowed to move an order to, from each status
@@ -151,6 +176,8 @@ def inject_globals():
         payment_methods=PAYMENT_METHODS,
         vendor_categories=VENDOR_CATEGORIES,
         delivery_fee=DELIVERY_FEE,
+        trader_fee=TRADER_MONTHLY_FEE,
+        photo=photo,
     )
 
 
