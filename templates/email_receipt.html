@@ -1,0 +1,13 @@
+<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;color:#1c1c1e">
+  <h2 style="color:#1a3d2b">Payment received</h2>
+  <p>Hi {{ vendor.owner.name.split()[0] }},</p>
+  <p>Thank you. We received your payment for <strong>{{ vendor.name }}</strong> on Katale.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:15px;margin:18px 0">
+    <tr><td style="padding:6px 0;color:#5b6370">Amount</td><td style="text-align:right">UGX {{ '{:,.0f}'.format(payment.amount) }}</td></tr>
+    <tr><td style="padding:6px 0;color:#5b6370">Paid with</td><td style="text-align:right">{{ payment.method or 'Pesapal' }}</td></tr>
+    {% if payment.confirmation_code %}<tr><td style="padding:6px 0;color:#5b6370">Confirmation</td><td style="text-align:right">{{ payment.confirmation_code }}</td></tr>{% endif %}
+    <tr><td style="padding:6px 0;color:#5b6370">Reference</td><td style="text-align:right">{{ payment.reference }}</td></tr>
+    <tr><td style="padding:6px 0;color:#5b6370">Shop active until</td><td style="text-align:right"><strong>{{ vendor.access_until.strftime('%d %b %Y') }}</strong></td></tr>
+  </table>
+  <p style="color:#5b6370;font-size:13px">Katale, a Gridcraft product</p>
+</div>

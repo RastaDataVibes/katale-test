@@ -7,13 +7,24 @@
     <h2 style="margin-top:24px">Shops</h2>
     <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>Shop</th><th>Owner</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Shop</th><th>Owner</th><th>Status</th><th>Subscription</th><th></th></tr></thead>
       <tbody>
       {% for v in vendors %}
         <tr>
           <td><a href="{{ url_for('shop_detail', slug=v.slug) }}"><strong>{{ v.name }}</strong></a><br><span class="muted">{{ v.area }}</span></td>
           <td>{{ v.owner.name }}<br><span class="muted">{{ v.owner.email }}</span></td>
-          <td>{% if v.is_approved %}<span class="tag">Live</span>{% else %}<span class="tag warn">Pending</span>{% endif %}</td>
+          <td>{% if v.is_approved %}<span class="tag">Approved</span>{% else %}<span class="tag warn">Pending</span>{% endif %}</td>
+          <td>
+            {% if not v.is_approved %}<span class="muted">Starts on approval</span>
+            {% elif v.subscription_active %}<span class="tag">{{ 'Trial' if v.on_trial else 'Paid' }}</span><br><span class="muted">until {{ v.access_until.strftime('%d %b %Y') }}</span>
+            {% else %}<span class="tag off">Expired</span><br><span class="muted">hidden from customers</span>{% endif %}
+            {% if v.is_approved %}
+            <form class="inline-form" action="{{ url_for('admin_free_days', vendor_id=v.id) }}" method="POST" style="margin-top:6px">
+              <input type="number" name="days" value="30" min="1" max="366" aria-label="Free days">
+              <button class="btn btn-light btn-small" type="submit">Give free days</button>
+            </form>
+            {% endif %}
+          </td>
           <td class="num">
             <form class="inline-form" action="{{ url_for('admin_toggle_vendor', vendor_id=v.id) }}" method="POST">
               <button class="btn btn-small {% if v.is_approved %}btn-danger{% endif %}" type="submit">{{ 'Hide' if v.is_approved else 'Approve' }}</button>
@@ -21,7 +32,7 @@
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="4" class="muted">No shops have applied yet.</td></tr>
+        <tr><td colspan="5" class="muted">No shops have applied yet.</td></tr>
       {% endfor %}
       </tbody>
     </table>

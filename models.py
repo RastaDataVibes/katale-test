@@ -1,6 +1,6 @@
 import math
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
 
 db = SQLAlchemy()
 
@@ -70,7 +70,45 @@ class Vendor(db.Model):
     delivery_radius_km = db.Column(db.Float, default=5, nullable=False)    # how far they deliver
     delivery_base_fee = db.Column(db.Integer, default=2000, nullable=False)  # UGX, starting fee
     delivery_per_km = db.Column(db.Integer, default=1000, nullable=False)    # UGX for every km
+
+    # Subscription: free month from approval, then paid 30 days at a time
+    trial_ends = db.Column(db.DateTime, nullable=True)
+    paid_until = db.Column(db.DateTime, nullable=True)
+    last_reminder = db.Column(db.String(40), nullable=True)   # stops us sending the same reminder twice
     date_added = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def access_until(self):
+        """The last moment the shop is visible to customers (end of trial or of paid time)."""
+        dates = [d for d in (self.trial_ends, self.paid_until) if d]
+        return max(dates) if dates else None
+
+    @property
+    def subscription_active(self):
+        until = self.access_until
+        return until is not None and until > datetime.utcnow()
+
+    @property
+    def on_trial(self):
+        return bool(self.trial_ends and self.trial_ends > datetime.utcnow()
+                    and (not self.paid_until or self.paid_until <= self.trial_ends))
+
+    @property
+    def days_left(self):
+        until = self.access_until
+        if not until:
+            return 0
+        return max(0, (until - datetime.utcnow()).days + (1 if (until - datetime.utcnow()).seconds else 0))
+
+    @property
+    def visible_to_customers(self):
+        return self.is_approved and self.subscription_active
+
+    def add_days(self, days):
+        """Add paid days on top of whatever time the shop already has left."""
+        start = max(self.access_until or datetime.utcnow(), datetime.utcnow())
+        self.paid_until = start + timedelta(days=days)
+        self.last_reminder = None
 
     @property
     def has_location(self):
@@ -166,3 +204,22 @@ class OrderItem(db.Model):
     @property
     def line_total(self):
         return self.unit_price * self.quantity
+
+
+class Payment(db.Model):
+    """One subscription payment through Pesapal."""
+    __tablename__ = 'payments'
+    id = db.Column(db.Integer, primary_key=True)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False)
+    reference = db.Column(db.String(60), unique=True, nullable=False)     # our own number, e.g. KAT-12-1730541234
+    tracking_id = db.Column(db.String(80), unique=True, nullable=True)    # Pesapal's number for it
+    amount = db.Column(db.Integer, nullable=False)                       # UGX
+    days = db.Column(db.Integer, default=30, nullable=False)
+    status = db.Column(db.String(20), default='pending', nullable=False)  # pending / completed / failed
+    method = db.Column(db.String(60), nullable=True)                     # e.g. MTN Mobile Money
+    confirmation_code = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    note = db.Column(db.String(200), nullable=True)                      # e.g. "Free days given by admin"
+
+    vendor = db.relationship('Vendor', backref=db.backref('payments', order_by='Payment.created_at.desc()'))

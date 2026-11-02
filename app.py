@@ -15,7 +15,7 @@ from authlib.integrations.flask_client import OAuth
 import cloudinary
 import cloudinary.uploader
 from sqlalchemy import inspect, text
-from models import db, User, Vendor, Product, Order, OrderItem, STATUS_LABELS, distance_km
+from models import db, User, Vendor, Product, Order, OrderItem, Payment, STATUS_LABELS, distance_km
 
 app = Flask(__name__)
 # Render sits in front of the app; this lets Flask know the real address is https://
@@ -61,7 +61,9 @@ SITE_NAME = 'Katale'
 ADMIN_EMAIL = (os.environ.get('ADMIN_EMAIL') or '').strip().lower()
 DELIVERY_FEE = 5000  # UGX, only used for shops that have not pinned their location yet
 KAMPALA = (0.3476, 32.5825)  # where maps start if we know nothing else
-TRADER_MONTHLY_FEE = 30000  # UGX per month, first month free (step 5 adds the payments)
+TRADER_MONTHLY_FEE = 30000  # UGX for 30 days
+TRIAL_DAYS = 30             # free days a new shop gets when it is approved
+SUBSCRIPTION_DAYS = 30      # days each payment adds
 
 VENDOR_CATEGORIES = ['Chicken & poultry', 'Groceries', 'Fresh produce', 'Meat & fish', 'Grains & cereals',
                      'Restaurant', 'Pharmacy', 'Household', 'Other']
@@ -179,6 +181,9 @@ NEW_COLUMNS = [
     ('orders', 'delivery_lng', 'FLOAT'),
     ('orders', 'delivery_landmark', 'VARCHAR(200)'),
     ('orders', 'distance_km', 'FLOAT'),
+    ('vendors', 'trial_ends', 'TIMESTAMP'),
+    ('vendors', 'paid_until', 'TIMESTAMP'),
+    ('vendors', 'last_reminder', 'VARCHAR(40)'),
 ]
 
 
@@ -198,9 +203,17 @@ def add_missing_columns():
             conn.execute(text('ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL'))
 
 
+def start_trials_for_existing_shops():
+    """Shops approved before subscriptions existed get their free month from today."""
+    for v in Vendor.query.filter(Vendor.is_approved.is_(True), Vendor.trial_ends.is_(None)).all():
+        v.trial_ends = datetime.utcnow() + timedelta(days=TRIAL_DAYS)
+    db.session.commit()
+
+
 with app.app_context():
     db.create_all()
     add_missing_columns()
+    start_trials_for_existing_shops()
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -283,7 +296,7 @@ def delivery_quote(vendor, loc):
 def shops_near(query, loc):
     """Attach distance + fee to each shop. If we know where the customer is,
     hide shops that can't reach them and put the nearest first."""
-    vendors = query.all()
+    vendors = [v for v in query.all() if v.subscription_active]   # unpaid shops are hidden
     for v in vendors:
         v.quote = delivery_quote(v, loc)
     if not loc:
@@ -422,7 +435,7 @@ def shop_detail(slug):
     vendor = Vendor.query.filter_by(slug=slug).first_or_404()
     user = get_current_user()
     can_preview = user and (user.id == vendor.owner_id or user.is_admin)
-    if not vendor.is_approved and not can_preview:
+    if not vendor.visible_to_customers and not can_preview:
         abort(404)
     products = Product.query.filter_by(vendor_id=vendor.id).order_by(Product.in_stock.desc(), Product.name).all()
     return render_template('shop_detail.html', vendor=vendor, products=products,
@@ -660,7 +673,7 @@ def cart_add():
     vendor = product.vendor
     qty = max(1, min(request.form.get('qty', 1, type=int), 50))
 
-    if not vendor.is_approved or not vendor.is_open or not product.in_stock:
+    if not vendor.visible_to_customers or not vendor.is_open or not product.in_stock:
         flash(f'{product.name} is not available right now.', 'error')
         return redirect(url_for('shop_detail', slug=vendor.slug))
 
@@ -711,7 +724,7 @@ def checkout():
         return redirect(url_for('shops'))
 
     vendor = details['vendor']
-    if not vendor or not vendor.is_approved or not vendor.is_open:
+    if not vendor or not vendor.visible_to_customers or not vendor.is_open:
         flash('That shop is not taking orders right now.', 'error')
         return redirect(url_for('cart'))
 
@@ -1022,6 +1035,224 @@ def vendor_order_status(order_id):
     return redirect(url_for('vendor_dashboard'))
 
 
+# ── Trader subscriptions (Pesapal) ───────────────────────────
+# Same Gridcraft Pesapal account as Carcraaft. In Render's Environment:
+#   PESAPAL_CONSUMER_KEY, PESAPAL_CONSUMER_SECRET   (copied from Carcraaft)
+#   PESAPAL_ENV = live  (or "sandbox" for testing)
+#   PESAPAL_IPN_ID      (optional; if missing we register our IPN address ourselves)
+PESAPAL_KEY = os.environ.get('PESAPAL_CONSUMER_KEY', '').strip()
+PESAPAL_SECRET = os.environ.get('PESAPAL_CONSUMER_SECRET', '').strip()
+PESAPAL_BASE = ('https://cybqa.pesapal.com/pesapalv3' if os.environ.get('PESAPAL_ENV', 'live').lower() == 'sandbox'
+                else 'https://pay.pesapal.com/v3')
+_pesapal_ipn_id = os.environ.get('PESAPAL_IPN_ID', '').strip()
+
+
+class PesapalError(Exception):
+    pass
+
+
+def pesapal_token():
+    if not (PESAPAL_KEY and PESAPAL_SECRET):
+        raise PesapalError('Payments are not switched on yet (Pesapal keys are missing in Render).')
+    r = requests.post(f'{PESAPAL_BASE}/api/Auth/RequestToken', timeout=20,
+                      headers={'Accept': 'application/json', 'Content-Type': 'application/json'},
+                      json={'consumer_key': PESAPAL_KEY, 'consumer_secret': PESAPAL_SECRET})
+    data = r.json() if r.content else {}
+    if not data.get('token'):
+        app.logger.error('Pesapal token failed: %s', data)
+        raise PesapalError('Could not connect to Pesapal. Please try again in a minute.')
+    return data['token']
+
+
+def pesapal_headers(token):
+    return {'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
+
+
+def pesapal_ipn_id(token):
+    """Pesapal needs to know the address it should ping when a payment changes.
+    We register it once and remember the id."""
+    global _pesapal_ipn_id
+    if _pesapal_ipn_id:
+        return _pesapal_ipn_id
+    r = requests.post(f'{PESAPAL_BASE}/api/URLSetup/RegisterIPN', timeout=20, headers=pesapal_headers(token),
+                      json={'url': url_for('pesapal_ipn', _external=True), 'ipn_notification_type': 'GET'})
+    data = r.json() if r.content else {}
+    if not data.get('ipn_id'):
+        app.logger.error('Pesapal IPN registration failed: %s', data)
+        raise PesapalError('Could not set up payments with Pesapal. Please try again.')
+    _pesapal_ipn_id = data['ipn_id']
+    app.logger.info('Pesapal IPN registered: %s (you can save this as PESAPAL_IPN_ID in Render)', _pesapal_ipn_id)
+    return _pesapal_ipn_id
+
+
+def pesapal_start_payment(payment, user):
+    """Ask Pesapal for a payment page. Returns the web address to send the trader to."""
+    token = pesapal_token()
+    first, _, last = (user.name or 'Katale trader').partition(' ')
+    body = {
+        'id': payment.reference,
+        'currency': 'UGX',
+        'amount': payment.amount,
+        'description': f'Katale shop subscription - {payment.vendor.name} - {payment.days} days'[:100],
+        'callback_url': url_for('pesapal_callback', _external=True),
+        'notification_id': pesapal_ipn_id(token),
+        'billing_address': {'email_address': user.email, 'phone_number': payment.vendor.phone or user.phone or '',
+                            'country_code': 'UG', 'first_name': first, 'last_name': last},
+    }
+    r = requests.post(f'{PESAPAL_BASE}/api/Transactions/SubmitOrderRequest', timeout=25,
+                      headers=pesapal_headers(token), json=body)
+    data = r.json() if r.content else {}
+    if not data.get('redirect_url'):
+        app.logger.error('Pesapal order failed: %s', data)
+        raise PesapalError('Pesapal could not start the payment. Please try again.')
+    payment.tracking_id = data.get('order_tracking_id')
+    return data['redirect_url']
+
+
+def pesapal_check(payment):
+    """Ask Pesapal whether this payment went through, and give the shop its days if it did.
+    Safe to call many times: days are only added once."""
+    if payment.status == 'completed' or not payment.tracking_id:
+        return payment.status
+    token = pesapal_token()
+    r = requests.get(f'{PESAPAL_BASE}/api/Transactions/GetTransactionStatus', timeout=20,
+                     headers=pesapal_headers(token), params={'orderTrackingId': payment.tracking_id})
+    data = r.json() if r.content else {}
+    code = data.get('status_code')           # 1 = paid, 2 = failed, 3 = reversed, 0 = not finished
+    payment.method = data.get('payment_method') or payment.method
+    payment.confirmation_code = data.get('confirmation_code') or payment.confirmation_code
+    if code == 1 and int(float(data.get('amount') or 0)) >= payment.amount:
+        payment.status = 'completed'
+        payment.completed_at = datetime.utcnow()
+        payment.vendor.add_days(payment.days)
+        db.session.commit()
+        owner = payment.vendor.owner
+        send_email(owner.email, owner.name, f'Payment received - your {SITE_NAME} shop is active',
+                   render_template('email_receipt.html', payment=payment, vendor=payment.vendor))
+    elif code in (2, 3):
+        payment.status = 'failed'
+        db.session.commit()
+    else:
+        db.session.commit()
+    return payment.status
+
+
+@app.route('/vendor/subscription')
+@vendor_required
+def vendor_subscription():
+    vendor = get_current_user().vendor
+    return render_template('vendor_subscription.html', vendor=vendor,
+                           payments=[p for p in vendor.payments][:12],
+                           payments_on=bool(PESAPAL_KEY and PESAPAL_SECRET))
+
+
+@app.route('/vendor/subscription/pay', methods=['POST'])
+@vendor_required
+def vendor_pay():
+    user = get_current_user()
+    vendor = user.vendor
+    if not vendor.is_approved:
+        flash('You can pay once your shop has been approved. Your free month starts then.', 'error')
+        return redirect(url_for('vendor_subscription'))
+    payment = Payment(vendor=vendor, amount=TRADER_MONTHLY_FEE, days=SUBSCRIPTION_DAYS,
+                      reference=f'KAT-{vendor.id}-{int(datetime.utcnow().timestamp())}')
+    db.session.add(payment)
+    try:
+        pay_url = pesapal_start_payment(payment, user)
+    except (PesapalError, requests.RequestException) as e:
+        db.session.rollback()
+        flash(str(e) if isinstance(e, PesapalError) else 'Could not reach Pesapal. Please try again.', 'error')
+        return redirect(url_for('vendor_subscription'))
+    db.session.commit()
+    return redirect(pay_url)
+
+
+@app.route('/payments/pesapal/callback')
+def pesapal_callback():
+    """Pesapal sends the trader back here after paying."""
+    payment = Payment.query.filter_by(tracking_id=request.args.get('OrderTrackingId')).first()
+    if not payment:
+        flash('We could not find that payment. If money left your account, please contact us.', 'error')
+        return redirect(url_for('vendor_subscription') if get_current_user() else url_for('home'))
+    try:
+        status = pesapal_check(payment)
+    except (PesapalError, requests.RequestException):
+        status = payment.status
+    if status == 'completed':
+        flash(f'Payment received. Your shop is active until {payment.vendor.access_until:%d %b %Y}.', 'success')
+    elif status == 'failed':
+        flash('The payment did not go through. No money was taken. Please try again.', 'error')
+    else:
+        flash('Your payment is being confirmed. This page will update in a minute or two.', 'info')
+    return redirect(url_for('vendor_subscription'))
+
+
+@app.route('/payments/pesapal/ipn')
+def pesapal_ipn():
+    """Pesapal pings this address (even if the trader closed the page) when a payment changes."""
+    tracking = request.args.get('OrderTrackingId', '')
+    reference = request.args.get('OrderMerchantReference', '')
+    payment = Payment.query.filter_by(tracking_id=tracking).first() or Payment.query.filter_by(reference=reference).first()
+    status = 500
+    if payment:
+        try:
+            if not payment.tracking_id:
+                payment.tracking_id = tracking
+            pesapal_check(payment)
+            status = 200
+        except (PesapalError, requests.RequestException):
+            app.logger.exception('Pesapal IPN check failed')
+    return {'orderNotificationType': request.args.get('OrderNotificationType', 'IPNCHANGE'),
+            'orderTrackingId': tracking, 'orderMerchantReference': reference, 'status': status}
+
+
+# ── Daily jobs (reminders) ───────────────────────────────────
+# GitHub Actions calls this once a day with the secret key (see .github/workflows/daily.yml).
+CRON_SECRET = os.environ.get('CRON_SECRET', '').strip()
+
+
+@app.route('/tasks/daily', methods=['GET', 'POST'])
+def daily_tasks():
+    if not CRON_SECRET or request.args.get('key') != CRON_SECRET:
+        abort(404)
+    sent = 0
+    for v in Vendor.query.filter_by(is_approved=True).all():
+        until = v.access_until
+        if not until:
+            continue
+        days = (until - datetime.utcnow()).total_seconds() / 86400
+        tag = None
+        if 0 < days <= 1:
+            tag = '1d'
+        elif 1 < days <= 7:
+            tag = '7d'
+        elif -1 < days <= 0:
+            tag = 'ended'
+        if not tag:
+            continue
+        key = f'{tag}:{until:%Y-%m-%d}'
+        if v.last_reminder == key:
+            continue          # already sent this one
+        ok = send_email(v.owner.email, v.owner.name,
+                        {'7d': f'Your {SITE_NAME} shop: 7 days left',
+                         '1d': f'Your {SITE_NAME} shop ends tomorrow',
+                         'ended': f'Your {SITE_NAME} shop is now hidden'}[tag],
+                        render_template('email_reminder.html', vendor=v, tag=tag,
+                                        pay_link=url_for('vendor_subscription', _external=True)))
+        if ok:
+            v.last_reminder = key
+            sent += 1
+    # Check payments that were started but never confirmed (e.g. Pesapal ping missed)
+    for p in Payment.query.filter_by(status='pending').filter(
+            Payment.created_at > datetime.utcnow() - timedelta(days=3)).all():
+        try:
+            pesapal_check(p)
+        except Exception:
+            pass
+    db.session.commit()
+    return {'ok': True, 'reminders_sent': sent}
+
+
 # ── Admin ────────────────────────────────────────────────────
 @app.route('/admin')
 @admin_required
@@ -1036,8 +1267,28 @@ def admin_dashboard():
 def admin_toggle_vendor(vendor_id):
     vendor = Vendor.query.get_or_404(vendor_id)
     vendor.is_approved = not vendor.is_approved
+    if vendor.is_approved and not vendor.trial_ends:
+        vendor.trial_ends = datetime.utcnow() + timedelta(days=TRIAL_DAYS)   # free month starts now
     db.session.commit()
     flash(f'{vendor.name} is now {"live" if vendor.is_approved else "hidden"}.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/vendors/<int:vendor_id>/free-days', methods=['POST'])
+@admin_required
+def admin_free_days(vendor_id):
+    """Give a shop free days by hand (e.g. family, a promotion, or a payment made outside Pesapal)."""
+    vendor = Vendor.query.get_or_404(vendor_id)
+    try:
+        days = max(1, min(366, int(request.form.get('days', 30))))
+    except ValueError:
+        days = 30
+    vendor.add_days(days)
+    db.session.add(Payment(vendor=vendor, amount=0, days=days, status='completed', completed_at=datetime.utcnow(),
+                           reference=f'FREE-{vendor.id}-{int(datetime.utcnow().timestamp())}',
+                           note=f'{days} free days given by admin'))
+    db.session.commit()
+    flash(f'{vendor.name} got {days} free days. Active until {vendor.access_until:%d %b %Y}.', 'success')
     return redirect(url_for('admin_dashboard'))
 
 

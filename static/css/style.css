@@ -414,3 +414,12 @@ a.order-row:hover{box-shadow:var(--shadow);}
 /* Top bar + footer run edge to edge; page content stays centred */
 .footer-full{padding:0 32px;}
 @media (max-width:720px){ .footer-full{padding:0 16px;} }
+
+/* ── Step 5: subscription ────────────────────────────── */
+.sub-card{display:flex; gap:16px; align-items:flex-start;}
+.sub-card h3{margin-bottom:4px;}
+.sub-ico{width:52px; height:52px; border-radius:16px; display:grid; place-items:center; flex-shrink:0; background:var(--green-tint); color:var(--green-mid);}
+.sub-card.off .sub-ico{background:var(--red-tint); color:var(--red);}
+.plan{display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap;}
+.price-big.dark{color:var(--green-dark);}
+.ticks.dark{color:var(--ink); margin-bottom:0;}

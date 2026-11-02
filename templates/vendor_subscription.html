@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Subscription | {{ site_name }}{% endblock %}
+{% block content %}
+<section>
+  <div class="wrap narrow">
+    <a class="text-link" href="{{ url_for('vendor_dashboard') }}">&larr; Back to my shop</a>
+    <h1 style="margin-top:10px">Subscription</h1>
+
+    <div class="card sub-card {{ 'ok' if vendor.subscription_active else 'off' }}">
+      {% if not vendor.is_approved %}
+        <span class="sub-ico">{{ icon('clock', 26) }}</span>
+        <div>
+          <h3>Waiting for approval</h3>
+          <p class="muted">Your free month starts the day we approve your shop. You don't need to pay anything yet.</p>
+        </div>
+      {% elif vendor.subscription_active %}
+        <span class="sub-ico">{{ icon('check-circle', 26) }}</span>
+        <div>
+          <h3>{{ 'Free month' if vendor.on_trial else 'Active' }}: {{ vendor.days_left }} day{{ '' if vendor.days_left == 1 else 's' }} left</h3>
+          <p class="muted">Customers can see your shop until <strong>{{ vendor.access_until.strftime('%d %b %Y') }}</strong>. Paying now adds 30 days on top of that, so you never lose any days.</p>
+        </div>
+      {% else %}
+        <span class="sub-ico">{{ icon('info', 26) }}</span>
+        <div>
+          <h3>Your shop is hidden</h3>
+          <p class="muted">Your time ended on {{ vendor.access_until.strftime('%d %b %Y') if vendor.access_until else '-' }}. Customers can't see your shop until you pay. Your products and orders are all still here.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if vendor.is_approved %}
+    <div class="card" style="margin-top:16px">
+      <div class="plan">
+        <div>
+          <span class="eyebrow" style="margin-bottom:10px"><i class="dot"></i> Katale shop</span>
+          <div class="price-line" style="margin:6px 0"><span class="price-big dark">{{ trader_fee|ugx }}</span><span class="per">/ 30 days</span></div>
+          <ul class="ticks dark">
+            <li>{{ icon('check', 18) }} No commission on any order</li>
+            <li>{{ icon('check', 18) }} Customers near you find your shop</li>
+            <li>{{ icon('check', 18) }} Pay with MTN, Airtel or card</li>
+          </ul>
+        </div>
+        <form method="POST" action="{{ url_for('vendor_pay') }}">
+          {% if payments_on %}
+            <button class="btn" type="submit">{{ icon('phone', 18) }} Pay {{ trader_fee|ugx }}</button>
+            <p class="muted" style="margin-top:8px;font-size:13.5px">You'll go to Pesapal's secure page, then come back here.</p>
+          {% else %}
+            <button class="btn" type="button" disabled style="opacity:.5">Payments coming soon</button>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if payments %}
+      <h2 style="margin-top:28px">Payment history</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Date</th><th>Details</th><th class="num">Amount</th><th>Status</th></tr></thead>
+          <tbody>
+          {% for p in payments %}
+            <tr>
+              <td>{{ p.created_at.strftime('%d %b %Y') }}</td>
+              <td>{{ p.note or (p.days ~ ' days') }}{% if p.method %}<br><span class="muted">{{ p.method }}{% if p.confirmation_code %} · {{ p.confirmation_code }}{% endif %}</span>{% endif %}</td>
+              <td class="num">{{ p.amount|ugx }}</td>
+              <td>{% if p.status == 'completed' %}<span class="tag">Paid</span>{% elif p.status == 'failed' %}<span class="tag off">Failed</span>{% else %}<span class="tag warn">Pending</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

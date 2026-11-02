@@ -13,12 +13,20 @@
       <div class="actions" style="margin:0">
         <a class="btn btn-light" href="{{ url_for('shop_detail', slug=vendor.slug) }}">View shop page</a>
         <a class="btn btn-outline" href="{{ url_for('vendor_settings') }}">{{ icon('settings', 16) }} Shop settings</a>
+        <a class="btn btn-outline" href="{{ url_for('vendor_subscription') }}">{{ icon('cash', 16) }} Subscription</a>
         <form action="{{ url_for('vendor_toggle_open') }}" method="POST">
           <button class="btn" type="submit">{{ 'Close shop' if vendor.is_open else 'Open shop' }}</button>
         </form>
       </div>
     </div>
 
+    {% if vendor.is_approved and not vendor.subscription_active %}
+      <a class="loc-nudge warn" href="{{ url_for('vendor_subscription') }}" style="margin-top:20px">{{ icon('info', 20) }} <span><strong>Your shop is hidden from customers.</strong> Pay {{ trader_fee|ugx }} to bring it back. Your products and orders are safe.</span> {{ icon('chevron-right', 18) }}</a>
+    {% elif vendor.is_approved and vendor.days_left <= 7 %}
+      <a class="loc-nudge warn" href="{{ url_for('vendor_subscription') }}" style="margin-top:20px">{{ icon('clock', 20) }} <span><strong>{{ vendor.days_left }} day{{ '' if vendor.days_left == 1 else 's' }} left</strong> {{ 'of your free month' if vendor.on_trial else 'on your subscription' }}. Pay {{ trader_fee|ugx }} to keep your shop visible.</span> {{ icon('chevron-right', 18) }}</a>
+    {% elif vendor.is_approved and vendor.on_trial %}
+      <p class="muted" style="margin-top:14px">{{ icon('check-circle', 15) }} Free month: {{ vendor.days_left }} days left (until {{ vendor.access_until.strftime('%d %b %Y') }})</p>
+    {% endif %}
     {% if not vendor.has_location %}
       <a class="loc-nudge warn" href="{{ url_for('vendor_settings') }}" style="margin-top:20px">{{ icon('pin', 20) }} <span><strong>Put your shop on the map.</strong> Until you do, customers can't see how far you are and your delivery price can't be worked out.</span> {{ icon('chevron-right', 18) }}</a>
     {% else %}

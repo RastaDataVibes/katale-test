@@ -4,6 +4,9 @@
 {% block content %}
 <section>
   <div class="wrap">
+    {% if vendor.is_approved and not vendor.subscription_active %}
+      <div class="flash flash-error" style="margin-bottom:20px">{{ icon('info', 18) }} <span>This shop is hidden because its subscription ended. Only you and the admin can see it. <a class="text-link" href="{{ url_for('vendor_subscription') }}">Pay to bring it back</a></span></div>
+    {% endif %}
     {% if not vendor.is_approved %}
       <div class="flash flash-error" style="margin-bottom:20px">{{ icon('info', 18) }} <span>This shop is waiting for approval. Only you and the admin can see it.</span></div>
     {% endif %}

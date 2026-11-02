@@ -1,0 +1,18 @@
+# Runs once a day and asks Katale to send subscription reminders
+# and double-check any unconfirmed Pesapal payments.
+# Needs one GitHub secret: KATALE_CRON_SECRET (same value as CRON_SECRET in Render).
+name: Katale daily jobs
+
+on:
+  schedule:
+    - cron: '17 5 * * *'   # every day at 05:17 UTC = 08:17 in Kampala
+  workflow_dispatch:        # lets you run it by hand from the Actions tab
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Katale's daily job
+        run: |
+          curl -fsS --retry 3 --retry-delay 30 --max-time 120 \
+            "https://paul-ergy.onrender.com/tasks/daily?key=${{ secrets.KATALE_CRON_SECRET }}"
