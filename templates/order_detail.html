@@ -51,9 +51,14 @@
         <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn>{{ icon('bell', 16) }} Turn on notifications</button>
       </div>
     {% endif %}
-    <p style="margin:18px 0 24px">
-      <span class="tag">{{ payment_methods.get(order.payment_method, order.payment_method) }} &middot; {{ order.payment_status }}</span>
-    </p>
+    {% if current_user.id == order.customer_id and order.payment_method == 'momo_now' and order.status != 'cancelled' %}
+      <div style="margin-top:18px">{% include "_pay_now.html" %}</div>
+    {% elif current_user.id == order.vendor.owner_id or current_user.is_admin %}
+      {% set o = order %}<div style="margin-top:18px">{% include "_pay_confirm.html" %}</div>
+    {% else %}
+      <p style="margin:18px 0 0"><span class="tag">{{ payment_methods.get(order.payment_method, order.payment_method) }} &middot; {{ payment_status_labels.get(order.payment_status, order.payment_status) }}</span></p>
+    {% endif %}
+    <div style="height:24px"></div>
     <div class="table-wrap">
     <table class="table">
       <thead><tr><th>Item</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Total</th></tr></thead>

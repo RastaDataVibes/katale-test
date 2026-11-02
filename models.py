@@ -74,6 +74,31 @@ class Vendor(db.Model):
     delivery_base_fee = db.Column(db.Integer, default=2000, nullable=False)  # UGX, starting fee
     delivery_per_km = db.Column(db.Integer, default=1000, nullable=False)    # UGX for every km
 
+    # How customers can pay this shop (money goes straight to the trader, never through Katale)
+    accepts_cash = db.Column(db.Boolean, default=True, nullable=False)            # cash on delivery
+    accepts_momo_on_delivery = db.Column(db.Boolean, default=True, nullable=False)  # mobile money at the door
+    mtn_merchant = db.Column(db.String(20), nullable=True)      # MTN MoMoPay merchant code
+    airtel_merchant = db.Column(db.String(20), nullable=True)   # Airtel Money Pay merchant code
+    mtn_number = db.Column(db.String(20), nullable=True)        # MTN Mobile Money number (send money)
+    airtel_number = db.Column(db.String(20), nullable=True)     # Airtel Money number (send money)
+    momo_name = db.Column(db.String(80), nullable=True)         # name registered on those accounts
+
+    @property
+    def accepts_pay_now(self):
+        return any([self.mtn_merchant, self.airtel_merchant, self.mtn_number, self.airtel_number])
+
+    @property
+    def payment_choices(self):
+        """The payment options this shop offers, in the order customers see them."""
+        out = []
+        if self.accepts_pay_now:
+            out.append('momo_now')
+        if self.accepts_momo_on_delivery:
+            out.append('mobile_money')
+        if self.accepts_cash or not out:
+            out.append('cash')
+        return out
+
     # Subscription: free month from approval, then paid 30 days at a time
     trial_ends = db.Column(db.DateTime, nullable=True)
     paid_until = db.Column(db.DateTime, nullable=True)
@@ -165,7 +190,9 @@ class Order(db.Model):
     notes = db.Column(db.Text, nullable=True)
 
     payment_method = db.Column(db.String(20), default='cash', nullable=False)   # 'cash' / 'mobile_money'
-    payment_status = db.Column(db.String(20), default='unpaid', nullable=False)  # 'unpaid' / 'paid'
+    payment_status = db.Column(db.String(20), default='unpaid', nullable=False)  # unpaid / claimed / paid / not_received
+    payment_ref = db.Column(db.String(60), nullable=True)        # transaction ID the customer typed from their SMS
+    payment_claimed_at = db.Column(db.DateTime, nullable=True)   # when the customer tapped "I've paid"
 
     subtotal = db.Column(db.Numeric(10, 2), nullable=False)
     delivery_fee = db.Column(db.Numeric(10, 2), default=0, nullable=False)

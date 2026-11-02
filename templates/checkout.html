@@ -21,10 +21,19 @@
         <input id="phone" name="phone" type="tel" value="{{ user.phone or '' }}" placeholder="07XX XXX XXX" required>
         <label for="notes">Notes for the shop <span class="opt">(optional)</span></label>
         <textarea id="notes" name="notes" placeholder="Ripeness, spice level, call when you arrive..."></textarea>
-        <label for="payment_method">How will you pay?</label>
-        <select id="payment_method" name="payment_method">
-          {% for key, label in payment_methods.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
-        </select>
+        <label>How will you pay?</label>
+        {% set pay_help = {
+          'momo_now': 'Pay ' ~ cart.vendor.name ~ ' from your phone now. We show you how after you place the order.',
+          'mobile_money': 'Pay by mobile money when your order arrives.',
+          'cash': 'Pay cash when your order arrives.'} %}
+        <div class="pay-choices">
+          {% for key in cart.vendor.payment_choices %}
+            <label class="pay-choice">
+              <input type="radio" name="payment_method" value="{{ key }}" {{ 'checked' if loop.first }}>
+              <span><strong>{{ payment_methods[key] }}</strong><small class="muted">{{ pay_help[key] }}</small></span>
+            </label>
+          {% endfor %}
+        </div>
       </div>
 
       <div class="card sticky-summary">
@@ -40,7 +49,7 @@
         </div>
         <p class="muted" id="far-msg" style="color:var(--red);display:none"></p>
         <button class="btn btn-block" type="submit" style="margin-top:18px">Place order</button>
-        <p class="muted center" style="margin-top:10px;font-size:13.5px">{{ icon('cash', 15) }} You pay when your order arrives</p>
+        <p class="muted center" style="margin-top:10px;font-size:13.5px">{{ icon('cash', 15) }} Your money goes straight to {{ cart.vendor.name }}</p>
       </div>
     </form>
   </div>

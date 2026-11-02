@@ -1,0 +1,12 @@
+{# Trader side: payment line + confirm buttons for one order (o) #}
+{% from "_icons.html" import icon %}
+<div class="pay-line {{ o.payment_status }}">
+  {{ icon('cash', 16) }} <span>{{ payment_methods.get(o.payment_method, o.payment_method) }} &middot; <strong>{{ payment_status_labels.get(o.payment_status, o.payment_status) }}</strong>{% if o.payment_ref %} &middot; ID {{ o.payment_ref }}{% endif %}</span>
+  {% if o.payment_method == 'momo_now' and o.payment_status in ('claimed', 'unpaid', 'not_received') and o.status != 'cancelled' %}
+    <form method="POST" action="{{ url_for('vendor_order_payment', order_id=o.id) }}" class="pay-btns">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-small" name="answer" value="received" type="submit">{{ icon('check', 14) }} Payment received</button>
+      {% if o.payment_status == 'claimed' %}<button class="btn btn-small btn-danger" name="answer" value="not_received" type="submit">Not received</button>{% endif %}
+    </form>
+  {% endif %}
+</div>

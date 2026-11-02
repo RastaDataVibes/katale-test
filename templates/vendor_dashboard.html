@@ -133,7 +133,8 @@
           <span class="tag warn">{{ o.status_label }}</span>
         </div>
         <p>{% for i in o.items %}{{ i.quantity }} &times; {{ i.name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
-        <p class="muted">{{ o.total|ugx }} (incl. delivery {{ o.delivery_fee|ugx }}) &middot; {{ payment_methods.get(o.payment_method) }}</p>
+        <p class="muted">{{ o.total|ugx }} (incl. delivery {{ o.delivery_fee|ugx }})</p>
+        {% include "_pay_confirm.html" %}
         <p class="muted">{{ icon('pin', 15) }} {{ o.delivery_address }}{% if o.distance_km %} &middot; {{ '%.1f'|format(o.distance_km) }} km{% endif %}</p>
         {% if o.delivery_landmark %}<p class="muted">Landmark: {{ o.delivery_landmark }}</p>{% endif %}
         {% if o.notes %}<p class="muted">Note: {{ o.notes }}</p>{% endif %}

@@ -45,6 +45,27 @@
   </div>
 </div>
 <div class="fee-example" id="fee-example"></div>
+
+<h3 class="form-section">{{ icon('cash', 20) }} How customers can pay you</h3>
+<p class="muted">Money goes straight to you. Katale never touches it and takes no cut.</p>
+{% set cash_on = f.accepts_cash if (f.accepts_cash is defined and f.accepts_cash is not none and f.accepts_cash != '') else true %}
+{% set mod_on = f.accepts_momo_on_delivery if (f.accepts_momo_on_delivery is defined and f.accepts_momo_on_delivery is not none and f.accepts_momo_on_delivery != '') else true %}
+<label class="check-row"><input type="checkbox" name="accepts_cash" value="1" {{ 'checked' if cash_on }}> <span><strong>Cash on delivery</strong></span></label>
+<label class="check-row"><input type="checkbox" name="accepts_momo_on_delivery" value="1" {{ 'checked' if mod_on }}> <span><strong>Mobile money on delivery</strong> <small class="muted">customer pays when the order arrives</small></span></label>
+
+<div class="paynow-box">
+  <strong>Pay now by mobile money</strong> <span class="muted">(optional) Fill in any you have. Customers can then pay before you deliver.</span>
+  <div class="row">
+    <div><label for="mtn_merchant">MTN MoMoPay merchant code</label><input id="mtn_merchant" name="mtn_merchant" inputmode="numeric" value="{{ f.mtn_merchant or '' }}" placeholder="e.g. 123456"></div>
+    <div><label for="airtel_merchant">Airtel Money Pay merchant code</label><input id="airtel_merchant" name="airtel_merchant" inputmode="numeric" value="{{ f.airtel_merchant or '' }}" placeholder="e.g. 4567890"></div>
+  </div>
+  <div class="row">
+    <div><label for="mtn_number">MTN Mobile Money number</label><input id="mtn_number" name="mtn_number" type="tel" value="{{ f.mtn_number or '' }}" placeholder="077X / 078X ..."></div>
+    <div><label for="airtel_number">Airtel Money number</label><input id="airtel_number" name="airtel_number" type="tel" value="{{ f.airtel_number or '' }}" placeholder="070X / 075X ..."></div>
+  </div>
+  <label for="momo_name">Name registered on these accounts</label>
+  <input id="momo_name" name="momo_name" value="{{ f.momo_name or '' }}" placeholder="Exactly as it shows when someone sends you money">
+</div>
 <script>
 (function () {
   var r = document.getElementById('delivery_radius_km'), b = document.getElementById('delivery_base_fee'), k = document.getElementById('delivery_per_km');

@@ -170,7 +170,14 @@ def photo(key, width=800, height=None):
         return None
     size = f'w_{width},h_{height},c_fill' if height else f'w_{width},c_limit'
     return f'{CLOUDINARY_BASE}/{size},q_auto,f_auto/{public_id}.jpg'
-PAYMENT_METHODS = {'cash': 'Cash on delivery', 'mobile_money': 'Mobile money on delivery'}
+PAYMENT_METHODS = {
+    'momo_now': 'Pay now by mobile money',
+    'mobile_money': 'Mobile money on delivery',
+    'cash': 'Cash on delivery',
+}
+PAYMENT_STATUS_LABELS = {
+    'unpaid': 'Not paid yet', 'claimed': 'Customer says paid', 'paid': 'Paid', 'not_received': 'Payment not received',
+}
 
 # What a vendor is allowed to move an order to, from each status
 VENDOR_NEXT_STATUS = {
@@ -205,6 +212,15 @@ NEW_COLUMNS = [
     ('users', 'notify_whatsapp', 'BOOLEAN NOT NULL DEFAULT TRUE'),
     ('users', 'notify_email', 'BOOLEAN NOT NULL DEFAULT TRUE'),
     ('orders', 'seen_at', 'TIMESTAMP'),
+    ('vendors', 'accepts_cash', 'BOOLEAN NOT NULL DEFAULT TRUE'),
+    ('vendors', 'accepts_momo_on_delivery', 'BOOLEAN NOT NULL DEFAULT TRUE'),
+    ('vendors', 'mtn_merchant', 'VARCHAR(20)'),
+    ('vendors', 'airtel_merchant', 'VARCHAR(20)'),
+    ('vendors', 'mtn_number', 'VARCHAR(20)'),
+    ('vendors', 'airtel_number', 'VARCHAR(20)'),
+    ('vendors', 'momo_name', 'VARCHAR(80)'),
+    ('orders', 'payment_ref', 'VARCHAR(60)'),
+    ('orders', 'payment_claimed_at', 'TIMESTAMP'),
 ]
 
 
@@ -421,6 +437,7 @@ def inject_globals():
         current_year=datetime.utcnow().year,
         status_labels=STATUS_LABELS,
         payment_methods=PAYMENT_METHODS,
+        payment_status_labels=PAYMENT_STATUS_LABELS,
         vendor_categories=VENDOR_CATEGORIES,
         delivery_fee=DELIVERY_FEE,
         trader_fee=TRADER_MONTHLY_FEE,
@@ -1070,9 +1087,9 @@ def checkout():
             return redirect(url_for('checkout'))
         fee = quote['fee']
 
-        method = request.form.get('payment_method', 'cash')
-        if method not in PAYMENT_METHODS:
-            method = 'cash'
+        method = request.form.get('payment_method', '')
+        if method not in vendor.payment_choices:
+            method = vendor.payment_choices[0]
 
         order = Order(
             customer_id=user.id, vendor_id=vendor.id,
@@ -1140,6 +1157,49 @@ def order_status_json(order_id):
     return {'status': order.status, 'label': order.status_label}
 
 
+@app.route('/orders/<int:order_id>/paid', methods=['POST'])
+@login_required
+def customer_says_paid(order_id):
+    """Customer tapped "I've paid" after paying the trader by mobile money."""
+    user = get_current_user()
+    order = Order.query.get_or_404(order_id)
+    if order.customer_id != user.id or order.payment_status == 'paid':
+        abort(404)
+    order.payment_status = 'claimed'
+    order.payment_ref = request.form.get('payment_ref', '').strip()[:60] or None
+    order.payment_claimed_at = datetime.utcnow()
+    db.session.commit()
+    ref = f' (ID {order.payment_ref})' if order.payment_ref else ''
+    in_background(push_to_user, order.vendor.owner_id, f'{order.reference}: customer says they paid',
+                  f'UGX {order.total:,.0f}{ref}. Check your phone, then tap Payment received.',
+                  url_for('vendor_dashboard', _external=True))
+    flash('Thank you. The shop will confirm your payment.', 'success')
+    return redirect(url_for('order_detail', order_id=order.id))
+
+
+@app.route('/vendor/orders/<int:order_id>/payment', methods=['POST'])
+@vendor_required
+def vendor_order_payment(order_id):
+    """Trader confirms the money arrived (or didn't)."""
+    vendor = get_current_user().vendor
+    order = Order.query.filter_by(id=order_id, vendor_id=vendor.id).first_or_404()
+    answer = request.form.get('answer')
+    if answer == 'received':
+        order.payment_status = 'paid'
+        msg = ('Payment confirmed', f'{vendor.name} received your payment for {order.reference}. Thank you!')
+    elif answer == 'not_received':
+        order.payment_status = 'not_received'
+        msg = ('Payment not received', f'{vendor.name} has not received your payment for {order.reference} yet. '
+                                       'Please check, or call the shop.')
+    else:
+        abort(400)
+    db.session.commit()
+    in_background(push_to_user, order.customer_id, msg[0], msg[1],
+                  url_for('order_detail', order_id=order.id, _external=True))
+    flash(f'{order.reference}: {PAYMENT_STATUS_LABELS[order.payment_status].lower()}.', 'success')
+    return redirect(request.referrer or url_for('vendor_dashboard'))
+
+
 @app.route('/orders/<int:order_id>/cancel', methods=['POST'])
 @login_required
 def cancel_order(order_id):
@@ -1185,6 +1245,21 @@ def read_shop_form(vendor, fallback_phone=None):
     vendor.delivery_radius_km = number('delivery_radius_km', 5, 0.5, 30)
     vendor.delivery_base_fee = int(number('delivery_base_fee', 2000, 0, 50000))
     vendor.delivery_per_km = int(number('delivery_per_km', 1000, 0, 10000))
+
+    # How customers can pay
+    def digits(field, size):
+        return re.sub(r'\D', '', request.form.get(field, ''))[:size] or None
+    vendor.accepts_cash = bool(request.form.get('accepts_cash'))
+    vendor.accepts_momo_on_delivery = bool(request.form.get('accepts_momo_on_delivery'))
+    vendor.mtn_merchant = digits('mtn_merchant', 12)
+    vendor.airtel_merchant = digits('airtel_merchant', 12)
+    vendor.mtn_number = digits('mtn_number', 12)
+    vendor.airtel_number = digits('airtel_number', 12)
+    vendor.momo_name = request.form.get('momo_name', '').strip()[:80] or None
+    if (vendor.mtn_number or vendor.airtel_number) and not vendor.momo_name:
+        return 'Please type the name registered on your mobile money number, so customers can check it is you.'
+    if not (vendor.accepts_cash or vendor.accepts_momo_on_delivery or vendor.accepts_pay_now):
+        return 'Please choose at least one way customers can pay you.'
 
     # Shop photo: a new upload replaces the old one; "remove" clears it
     try:
@@ -1378,8 +1453,8 @@ def vendor_order_status(order_id):
         return redirect(url_for('vendor_dashboard'))
     order.status = new_status
     order.seen_at = order.seen_at or datetime.utcnow()
-    if new_status == 'delivered':
-        order.payment_status = 'paid'
+    if new_status == 'delivered' and order.payment_method != 'momo_now':
+        order.payment_status = 'paid'      # cash / mobile money collected at the door
     db.session.commit()
     alert_status(order)
     flash(f'{order.reference} marked as {order.status_label.lower()}.', 'success')
