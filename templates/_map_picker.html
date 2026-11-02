@@ -79,8 +79,14 @@
       navigator.geolocation.getCurrentPosition(function (pos) {
         setPoint(pos.coords.latitude, pos.coords.longitude, 17);
         if (pos.coords.accuracy > 150) hint.textContent = 'Found you roughly. Drag the pin to your exact spot.';
-      }, function () {
-        hint.textContent = 'Could not get your location. Search for a place or drag the pin instead.';
+      }, function (err) {
+        if (err.code === 1) {
+          hint.textContent = 'Your browser is blocking location for this site. Allow location in your browser settings (the icon next to the web address), or search for a place / drag the pin.';
+        } else if (err.code === 3) {
+          hint.textContent = 'Finding you took too long. Try again, or search for a place / drag the pin.';
+        } else {
+          hint.textContent = 'Your device could not work out where you are. Search for a place or drag the pin instead.';
+        }
       }, { enableHighAccuracy: true, timeout: 12000 });
     });
 
