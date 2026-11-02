@@ -188,7 +188,7 @@
   document.querySelectorAll('[data-push-btn]').forEach(function (b) {
     function show() {
       var s = window.katalePush.state();
-      if (s === 'granted') { b.innerHTML = '🔔 Notifications on'; b.classList.add('on'); }
+      if (s === 'granted') { b.innerHTML = b.dataset.onHtml || 'Notifications on'; b.classList.add('on'); }
     }
     show();
     b.addEventListener('click', function () {

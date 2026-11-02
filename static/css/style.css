@@ -451,3 +451,14 @@ a.order-row:hover{box-shadow:var(--shadow);}
 .push-btn.on{background:var(--green-tint); color:var(--green-dark);}
 .push-nudge{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:14px; background:var(--green-tint); border:1px solid #cfe8d9; border-radius:var(--radius-sm); padding:12px 14px; font-size:14.5px; color:var(--green-dark);}
 .push-nudge span{display:flex; align-items:center; gap:8px;}
+/* ringing new-order banner */
+.new-order-bar{width:100%; display:flex; align-items:center; gap:12px; background:var(--gold); border:none; color:var(--green-dark); padding:16px 18px; border-radius:var(--radius); margin-bottom:14px; font:600 16px var(--body); cursor:pointer; text-align:left; box-shadow:0 8px 24px rgba(212,168,83,.35); animation:ring 0.9s ease-in-out infinite;}
+.new-order-bar[hidden]{display:none;}
+.new-order-bar span:nth-child(2){flex:1;}
+.new-order-bar strong{display:inline-flex; align-items:center; gap:6px; background:var(--green-dark); color:#fff; padding:8px 14px; border-radius:50px; font-size:14px;}
+.nob-ico{width:40px; height:40px; border-radius:50%; background:#fff; display:grid; place-items:center; animation:wiggle .9s ease-in-out infinite;}
+.new-order-bar.silent{animation:none;}
+@keyframes ring{0%,100%{transform:scale(1)} 50%{transform:scale(1.015)}}
+@keyframes wiggle{0%,100%{transform:rotate(0)} 25%{transform:rotate(-14deg)} 75%{transform:rotate(14deg)}}
+#sound-btn.on{background:var(--green-tint); border-color:var(--green-light); color:var(--green-dark);}
+.push-btn .ico,#sound-btn .ico{margin-right:2px;}

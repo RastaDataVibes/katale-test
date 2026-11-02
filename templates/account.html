@@ -14,8 +14,8 @@
 
     <h3 class="form-section">{{ icon('info', 20) }} Alerts</h3>
     <div class="check-row" style="cursor:default">
-      <span>🔔 <strong>Notifications on this device</strong> <small class="muted">free pop-ups for your orders, even when Katale is closed</small></span>
-      <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn style="margin-left:auto">Turn on</button>
+      <span>{{ icon('bell', 18) }} <strong>Notifications on this device</strong> <small class="muted">free pop-ups for your orders, even when Katale is closed</small></span>
+      <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-on-html="{{ (icon('check', 16) ~ ' Notifications on')|e }}" style="margin-left:auto">{{ icon('bell', 16) }} Turn on</button>
     </div>
     {% if current_user.vendor %}
     <label class="check-row"><input type="checkbox" name="notify_whatsapp" value="1" {{ 'checked' if current_user.notify_whatsapp }}> <span>{{ icon('whatsapp', 18) }} <strong>WhatsApp backup</strong> <small class="muted">if a new order is not opened within 3 minutes, we WhatsApp {{ current_user.vendor.phone or 'your shop number' }}</small></span></label>

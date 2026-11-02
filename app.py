@@ -865,7 +865,7 @@ def _whatsapp_backup(order_id, link):
 STATUS_PUSH = {
     'accepted': ('Order accepted', '{shop} has accepted your order.'),
     'preparing': ('Being prepared', '{shop} is getting your order ready.'),
-    'out_for_delivery': ('On the way 🛵', 'Your order from {shop} is on the way. Keep your phone near you.'),
+    'out_for_delivery': ('On the way', 'Your order from {shop} is on the way. Keep your phone near you.'),
     'delivered': ('Delivered', 'Enjoy! Your receipt is in your email.'),
     'cancelled': ('Order cancelled', '{shop} could not take your order. You have not been charged.'),
 }
@@ -881,9 +881,21 @@ def _alert_status(order_id, link):
                    render_template('email_order_receipt.html', order=order, link=link))
 
 
+def _ring_again(order_id, link, n):
+    """Re-send the new-order pop-up (it rings again) if nobody has opened the order yet."""
+    order = Order.query.get(order_id)
+    if order and order.status == 'placed' and not order.seen_at:
+        push_to_user(order.vendor.owner_id, f'Waiting: {order.reference} - UGX {order.total:,.0f}',
+                     f'{order.customer.name} is waiting for you to accept ({n} min). Tap to open.', link,
+                     tag=f'order-{order.id}')
+
+
 def alert_new_order(order):
-    link = url_for('vendor_dashboard', _external=True)
+    # Tapping the pop-up opens My shop and marks the order as seen (which stops the reminders)
+    link = url_for('vendor_dashboard', seen='all', _external=True)
     in_background(_push_new_order, order.id, link)
+    in_background(_ring_again, order.id, link, 1, delay=60)
+    in_background(_ring_again, order.id, link, 2, delay=120)
     in_background(_whatsapp_backup, order.id, link, delay=WHATSAPP_BACKUP_AFTER)
 
 
@@ -913,7 +925,7 @@ def push_subscribe():
 @app.route('/push/test', methods=['POST'])
 @login_required
 def push_test():
-    n = push_to_user(get_current_user().id, 'Katale notifications are on ✅',
+    n = push_to_user(get_current_user().id, 'Katale notifications are on',
                      'You will get a pop-up like this for your orders.', url_for('home'))
     return {'sent': n}
 
@@ -1225,11 +1237,14 @@ def vendor_settings():
 def vendor_dashboard():
     vendor = get_current_user().vendor
     orders = Order.query.filter_by(vendor_id=vendor.id).order_by(Order.date_placed.desc()).all()
-    unseen = [o for o in orders if o.status == 'placed' and not o.seen_at]
-    for o in unseen:
-        o.seen_at = datetime.utcnow()       # trader has seen it: no WhatsApp backup needed
-    if unseen:
+    # An order only counts as "seen" when someone actually taps (the pop-up, or "Show new order"),
+    # not just because the page is open on a phone nobody is looking at.
+    if request.args.get('seen') == 'all':
+        for o in orders:
+            if o.status == 'placed' and not o.seen_at:
+                o.seen_at = datetime.utcnow()
         db.session.commit()
+        return redirect(url_for('vendor_dashboard'))
     active = [o for o in orders if o.status not in ('delivered', 'cancelled')]
     past = [o for o in orders if o.status in ('delivered', 'cancelled')][:10]
     return render_template('vendor_dashboard.html', vendor=vendor, active=active, past=past,
@@ -1267,9 +1282,8 @@ def read_product_form(product):
 def vendor_poll():
     """My shop asks this every 30 seconds: is there a newer order than the one I'm showing?"""
     vendor = get_current_user().vendor
-    latest = Order.query.filter_by(vendor_id=vendor.id).order_by(Order.id.desc()).first()
-    waiting = Order.query.filter_by(vendor_id=vendor.id, status='placed').count()
-    return {'latest_id': latest.id if latest else 0, 'waiting': waiting}
+    unseen = Order.query.filter_by(vendor_id=vendor.id, status='placed', seen_at=None).count()
+    return {'unseen': unseen}
 
 
 @app.route('/vendor/products/add', methods=['POST'])
@@ -1354,6 +1368,7 @@ def vendor_order_status(order_id):
         flash('That status change is not allowed.', 'error')
         return redirect(url_for('vendor_dashboard'))
     order.status = new_status
+    order.seen_at = order.seen_at or datetime.utcnow()
     if new_status == 'delivered':
         order.payment_status = 'paid'
     db.session.commit()
