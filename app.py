@@ -1208,7 +1208,7 @@ def pesapal_ipn():
 
 # ── Daily jobs (reminders) ───────────────────────────────────
 # GitHub Actions calls this once a day with the secret key (see .github/workflows/daily.yml).
-CRON_SECRET = os.environ.get('CRON_SECRET', '').strip()
+CRON_SECRET = (os.environ.get('CRON_KEY') or os.environ.get('CRON_SECRET') or '').strip()   # same name as Carcraaft
 
 
 @app.route('/tasks/daily', methods=['GET', 'POST'])
