@@ -519,3 +519,13 @@ a.order-row:hover{box-shadow:var(--shadow);}
 .pay-line.not_received strong{color:var(--red);}
 .pay-btns{display:flex; gap:6px; margin-left:auto;}
 @media (max-width:720px){ .pay-options{grid-template-columns:1fr;} .pay-btns{margin-left:0;} }
+/* mobile money charges */
+.charges-box > .muted{display:block; margin:4px 0 10px; font-size:13.5px;}
+.mode-choices{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px;}
+.mode-choices .pay-choice{padding:10px 12px;}
+.band-head,.band-row{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+.band-head{font-size:12.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;}
+.band-row{margin-bottom:6px;}
+.band-row input[disabled]{background:var(--bg); color:var(--muted);}
+.charge-note{color:var(--amber) !important; font-weight:600 !important;}
+@media (max-width:720px){ .mode-choices{grid-template-columns:1fr;} }

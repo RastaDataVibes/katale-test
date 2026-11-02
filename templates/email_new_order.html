@@ -4,7 +4,8 @@
   <table style="width:100%;border-collapse:collapse;font-size:15px">
     {% for i in order.items %}<tr><td style="padding:5px 0">{{ i.quantity }} &times; {{ i.name }}</td><td style="text-align:right">UGX {{ '{:,.0f}'.format(i.line_total) }}</td></tr>{% endfor %}
     <tr><td style="padding:5px 0;color:#5b6370">Delivery</td><td style="text-align:right;color:#5b6370">UGX {{ '{:,.0f}'.format(order.delivery_fee) }}</td></tr>
-    <tr><td style="padding:8px 0;border-top:1px solid #e7e5df"><strong>Total ({{ 'cash' if order.payment_method == 'cash' else 'mobile money' }} on delivery)</strong></td><td style="text-align:right;border-top:1px solid #e7e5df"><strong>UGX {{ '{:,.0f}'.format(order.total) }}</strong></td></tr>
+    {% if order.momo_charge and order.momo_charge > 0 %}<tr><td style="padding:5px 0;color:#5b6370">Mobile money charges</td><td style="text-align:right;color:#5b6370">UGX {{ '{:,.0f}'.format(order.momo_charge) }}</td></tr>{% endif %}
+    <tr><td style="padding:8px 0;border-top:1px solid #e7e5df"><strong>Total ({{ payment_methods.get(order.payment_method, 'mobile money')|lower }} on delivery)</strong></td><td style="text-align:right;border-top:1px solid #e7e5df"><strong>UGX {{ '{:,.0f}'.format(order.total) }}</strong></td></tr>
   </table>
   <p style="margin-top:16px"><strong>Deliver to:</strong> {{ order.delivery_address }}{% if order.distance_km %} ({{ '%.1f'|format(order.distance_km) }} km){% endif %}<br>
   {% if order.delivery_landmark %}<strong>Landmark:</strong> {{ order.delivery_landmark }}<br>{% endif %}

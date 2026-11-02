@@ -1,4 +1,5 @@
 import math
+import json
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 
@@ -83,21 +84,62 @@ class Vendor(db.Model):
     airtel_number = db.Column(db.String(20), nullable=True)     # Airtel Money number (send money)
     momo_name = db.Column(db.String(80), nullable=True)         # name registered on those accounts
 
+    # Mobile money charges the customer adds when paying to a NUMBER (so the trader isn't short when cashing out)
+    momo_charge_mode = db.Column(db.String(10), default='none', nullable=False)   # none / bands / percent
+    momo_charge_bands = db.Column(db.Text, nullable=True)       # JSON: [[up_to, charge], ...], up_to 0 = "more than that"
+    momo_charge_percent = db.Column(db.Float, nullable=True)    # e.g. 2.0 means 2%
+    momo_charge_min = db.Column(db.Integer, nullable=True)      # smallest charge when using a percentage
+
+    @property
+    def has_merchant(self):
+        return bool(self.mtn_merchant or self.airtel_merchant)
+
+    @property
+    def has_momo_number(self):
+        return bool(self.mtn_number or self.airtel_number)
+
     @property
     def accepts_pay_now(self):
-        return any([self.mtn_merchant, self.airtel_merchant, self.mtn_number, self.airtel_number])
+        return self.has_merchant or self.has_momo_number
 
     @property
     def payment_choices(self):
         """The payment options this shop offers, in the order customers see them."""
         out = []
-        if self.accepts_pay_now:
-            out.append('momo_now')
+        if self.has_merchant:
+            out.append('momo_merchant')      # MoMoPay / Airtel Money Pay code: no charge
+        if self.has_momo_number:
+            out.append('momo_number')        # send to number now: charge may apply
         if self.accepts_momo_on_delivery:
-            out.append('mobile_money')
+            out.append('mobile_money')       # mobile money at the door (to a number): charge may apply
         if self.accepts_cash or not out:
             out.append('cash')
         return out
+
+    @property
+    def charge_bands(self):
+        try:
+            rows = json.loads(self.momo_charge_bands or '[]')
+            return [(int(a), int(b)) for a, b in rows]
+        except (ValueError, TypeError):
+            return []
+
+    def momo_charge_for(self, amount, method):
+        """Extra UGX the customer adds for this payment method on an order of this amount."""
+        if method not in ('momo_number', 'mobile_money', 'momo_now'):
+            return 0
+        amount = float(amount or 0)
+        if self.momo_charge_mode == 'percent' and self.momo_charge_percent:
+            fee = max(amount * self.momo_charge_percent / 100.0, self.momo_charge_min or 0)
+            return int(math.ceil(fee / 100.0) * 100)        # round up to the next UGX 100
+        if self.momo_charge_mode == 'bands':
+            bands = self.charge_bands
+            for up_to, fee in sorted([b for b in bands if b[0] > 0]):
+                if amount <= up_to:
+                    return fee
+            above = [fee for up_to, fee in bands if up_to == 0]
+            return above[0] if above else (max([fee for _, fee in bands]) if bands else 0)
+        return 0
 
     # Subscription: free month from approval, then paid 30 days at a time
     trial_ends = db.Column(db.DateTime, nullable=True)
@@ -196,6 +238,7 @@ class Order(db.Model):
 
     subtotal = db.Column(db.Numeric(10, 2), nullable=False)
     delivery_fee = db.Column(db.Numeric(10, 2), default=0, nullable=False)
+    momo_charge = db.Column(db.Numeric(10, 2), default=0, nullable=False)   # mobile money charges the customer added
     total = db.Column(db.Numeric(10, 2), nullable=False)
 
     status = db.Column(db.String(20), default='placed', nullable=False)

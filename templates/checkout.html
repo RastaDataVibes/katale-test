@@ -23,14 +23,16 @@
         <textarea id="notes" name="notes" placeholder="Ripeness, spice level, call when you arrive..."></textarea>
         <label>How will you pay?</label>
         {% set pay_help = {
-          'momo_now': 'Pay ' ~ cart.vendor.name ~ ' from your phone now. We show you how after you place the order.',
+          'momo_merchant': 'Pay ' ~ cart.vendor.name ~ ' from your phone using their merchant code. No extra charges.',
+          'momo_number': 'Send money to ' ~ cart.vendor.name ~ "'s number now. We show you how after you place the order.",
           'mobile_money': 'Pay by mobile money when your order arrives.',
           'cash': 'Pay cash when your order arrives.'} %}
         <div class="pay-choices">
           {% for key in cart.vendor.payment_choices %}
             <label class="pay-choice">
               <input type="radio" name="payment_method" value="{{ key }}" {{ 'checked' if loop.first }}>
-              <span><strong>{{ payment_methods[key] }}</strong><small class="muted">{{ pay_help[key] }}</small></span>
+              <span><strong>{{ payment_methods[key] }}</strong><small class="muted">{{ pay_help[key] }}</small>
+                <small class="charge-note" data-charge-for="{{ key }}"></small></span>
             </label>
           {% endfor %}
         </div>
@@ -45,6 +47,7 @@
           <div><span>Subtotal</span><span>{{ cart.subtotal|ugx }}</span></div>
           <div><span>Delivery <small id="km-label">{% if cart.quote and cart.quote.known %}({{ '%.1f'|format(cart.quote.km) }} km){% endif %}</small></span>
                <span id="fee-label">{% if cart.quote and cart.quote.fee is not none %}{{ cart.quote.fee|ugx }}{% else %}Set the pin{% endif %}</span></div>
+          <div id="charge-row" hidden><span>Mobile money charges</span><span id="charge-label"></span></div>
           <div class="total"><span>Total</span><span id="total-label">{% if cart.quote and cart.quote.fee is not none %}{{ (cart.subtotal + cart.quote.fee)|ugx }}{% else %}{{ cart.subtotal|ugx }}{% endif %}</span></div>
         </div>
         <p class="muted" id="far-msg" style="color:var(--red);display:none"></p>
@@ -61,9 +64,11 @@
 // (The server works it out again when the order is placed, so this is only a preview.)
 (function () {
   var shop = {{ {'lat': cart.vendor.lat, 'lng': cart.vendor.lng, 'radius': cart.vendor.delivery_radius_km,
-                 'base': cart.vendor.delivery_base_fee, 'perKm': cart.vendor.delivery_per_km, 'name': cart.vendor.name}|tojson }};
+                 'base': cart.vendor.delivery_base_fee, 'perKm': cart.vendor.delivery_per_km, 'name': cart.vendor.name,
+                 'cmode': cart.vendor.momo_charge_mode, 'bands': cart.vendor.charge_bands,
+                 'pct': cart.vendor.momo_charge_percent or 0, 'cmin': cart.vendor.momo_charge_min or 0,
+                 'fallbackFee': (cart.quote.fee if cart.quote and cart.quote.fee is not none else 0)}|tojson }};
   var subtotal = {{ cart.subtotal|float }};
-  if (shop.lat === null) return;
   var latIn = document.querySelector('.mp-lat'), lngIn = document.querySelector('.mp-lng');
   function km(a, b, c, d) {
     var R = 6371, r = Math.PI / 180, dLat = (c - a) * r, dLng = (d - b) * r;
@@ -71,19 +76,41 @@
     return 2 * R * Math.asin(Math.sqrt(x));
   }
   function ugx(n) { return 'UGX ' + Math.round(n).toLocaleString('en-US'); }
-  function update() {
-    if (!latIn.value) return;
-    var d = km(shop.lat, shop.lng, parseFloat(latIn.value), parseFloat(lngIn.value));
-    var fee = Math.ceil((shop.base + shop.perKm * d) / 500) * 500;
-    document.getElementById('km-label').textContent = '(' + d.toFixed(1) + ' km)';
-    document.getElementById('fee-label').textContent = ugx(fee);
-    document.getElementById('total-label').textContent = ugx(subtotal + fee);
-    var far = document.getElementById('far-msg');
-    if (d > shop.radius) {
-      far.style.display = 'block';
-      far.textContent = shop.name + ' only delivers up to ' + shop.radius + ' km. Your pin is ' + d.toFixed(1) + ' km away.';
-    } else { far.style.display = 'none'; }
+  // Same rules as the server (the server works it out again when the order is placed)
+  function charge(amount, method) {
+    if (method !== 'momo_number' && method !== 'mobile_money') return 0;
+    if (shop.cmode === 'percent' && shop.pct) return Math.ceil(Math.max(amount * shop.pct / 100, shop.cmin) / 100) * 100;
+    if (shop.cmode === 'bands') {
+      var b = shop.bands.filter(function (r) { return r[0] > 0; }).sort(function (x, y) { return x[0] - y[0]; });
+      for (var i = 0; i < b.length; i++) if (amount <= b[i][0]) return b[i][1];
+      var above = shop.bands.filter(function (r) { return r[0] === 0; });
+      return above.length ? above[0][1] : (shop.bands.length ? Math.max.apply(null, shop.bands.map(function (r) { return r[1]; })) : 0);
+    }
+    return 0;
   }
+  function update() {
+    var fee = shop.fallbackFee, d = null;
+    if (shop.lat !== null && latIn.value) {
+      d = km(shop.lat, shop.lng, parseFloat(latIn.value), parseFloat(lngIn.value));
+      fee = Math.ceil((shop.base + shop.perKm * d) / 500) * 500;
+      document.getElementById('km-label').textContent = '(' + d.toFixed(1) + ' km)';
+      document.getElementById('fee-label').textContent = ugx(fee);
+      var far = document.getElementById('far-msg');
+      if (d > shop.radius) { far.style.display = 'block'; far.textContent = shop.name + ' only delivers up to ' + shop.radius + ' km. Your pin is ' + d.toFixed(1) + ' km away.'; }
+      else { far.style.display = 'none'; }
+    }
+    var method = (document.querySelector('input[name=payment_method]:checked') || {}).value;
+    var base = subtotal + fee, c = charge(base, method);
+    document.querySelectorAll('[data-charge-for]').forEach(function (el) {
+      var x = charge(base, el.dataset.chargeFor);
+      el.textContent = x ? '+ ' + ugx(x) + ' mobile money charges' : '';
+    });
+    document.getElementById('charge-row').hidden = !c;
+    document.getElementById('charge-label').textContent = ugx(c);
+    document.getElementById('total-label').textContent = ugx(base + c);
+  }
+  document.querySelectorAll('input[name=payment_method]').forEach(function (r) { r.addEventListener('change', update); });
+  update();
   setInterval(update, 700);
 })();
 </script>

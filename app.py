@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import requests
-from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, g
+from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, g, has_request_context
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -171,10 +171,13 @@ def photo(key, width=800, height=None):
     size = f'w_{width},h_{height},c_fill' if height else f'w_{width},c_limit'
     return f'{CLOUDINARY_BASE}/{size},q_auto,f_auto/{public_id}.jpg'
 PAYMENT_METHODS = {
-    'momo_now': 'Pay now by mobile money',
+    'momo_merchant': 'Pay now with MoMoPay / Airtel Money Pay',
+    'momo_number': 'Pay now by mobile money (send to number)',
     'mobile_money': 'Mobile money on delivery',
     'cash': 'Cash on delivery',
+    'momo_now': 'Pay now by mobile money',          # older orders
 }
+PAY_NOW_METHODS = ('momo_merchant', 'momo_number', 'momo_now')
 PAYMENT_STATUS_LABELS = {
     'unpaid': 'Not paid yet', 'claimed': 'Customer says paid', 'paid': 'Paid', 'not_received': 'Payment not received',
 }
@@ -221,6 +224,11 @@ NEW_COLUMNS = [
     ('vendors', 'momo_name', 'VARCHAR(80)'),
     ('orders', 'payment_ref', 'VARCHAR(60)'),
     ('orders', 'payment_claimed_at', 'TIMESTAMP'),
+    ('vendors', 'momo_charge_mode', "VARCHAR(10) NOT NULL DEFAULT 'none'"),
+    ('vendors', 'momo_charge_bands', 'TEXT'),
+    ('vendors', 'momo_charge_percent', 'FLOAT'),
+    ('vendors', 'momo_charge_min', 'INTEGER'),
+    ('orders', 'momo_charge', 'NUMERIC(10, 2) NOT NULL DEFAULT 0'),
 ]
 
 
@@ -429,22 +437,26 @@ def local_time(value, fmt='%d %b %Y, %H:%M'):
 
 @app.context_processor
 def inject_globals():
-    cart = _get_cart()
+    # Emails sent in the background have no visitor (no login, cart or location),
+    # so only fill those in during a real page visit.
+    in_page = has_request_context()
+    cart = _get_cart() if in_page else {'items': {}}
     return dict(
-        current_user=get_current_user(),
+        current_user=get_current_user() if in_page else None,
         cart_count=sum(cart['items'].values()),
         site_name=SITE_NAME,
         current_year=datetime.utcnow().year,
         status_labels=STATUS_LABELS,
         payment_methods=PAYMENT_METHODS,
         payment_status_labels=PAYMENT_STATUS_LABELS,
+        pay_now_methods=PAY_NOW_METHODS,
         vendor_categories=VENDOR_CATEGORIES,
         delivery_fee=DELIVERY_FEE,
         trader_fee=TRADER_MONTHLY_FEE,
         photo=photo,
         sized=sized,
         uploads_on=CLOUDINARY_ON,
-        customer_loc=get_location(),
+        customer_loc=get_location() if in_page else None,
         whatsapp_number=whatsapp_number,
         kampala=KAMPALA,
     )
@@ -1090,6 +1102,7 @@ def checkout():
         method = request.form.get('payment_method', '')
         if method not in vendor.payment_choices:
             method = vendor.payment_choices[0]
+        momo_charge = vendor.momo_charge_for(details['subtotal'] + fee, method)
 
         order = Order(
             customer_id=user.id, vendor_id=vendor.id,
@@ -1098,8 +1111,8 @@ def checkout():
             distance_km=round(quote['km'], 2) if quote['km'] is not None else None,
             notes=request.form.get('notes', '').strip(),
             payment_method=method,
-            subtotal=details['subtotal'], delivery_fee=fee,
-            total=details['subtotal'] + fee,
+            subtotal=details['subtotal'], delivery_fee=fee, momo_charge=momo_charge,
+            total=details['subtotal'] + fee + momo_charge,
         )
         db.session.add(order)
         db.session.flush()  # gives us order.id before commit
@@ -1260,6 +1273,27 @@ def read_shop_form(vendor, fallback_phone=None):
         return 'Please type the name registered on your mobile money number, so customers can check it is you.'
     if not (vendor.accepts_cash or vendor.accepts_momo_on_delivery or vendor.accepts_pay_now):
         return 'Please choose at least one way customers can pay you.'
+
+    # Mobile money charges (when customers pay to a number)
+    mode = request.form.get('momo_charge_mode', 'none')
+    vendor.momo_charge_mode = mode if mode in ('none', 'bands', 'percent') else 'none'
+    if vendor.momo_charge_mode == 'percent':
+        try:
+            vendor.momo_charge_percent = max(0.0, min(10.0, float(request.form.get('momo_charge_percent') or 0)))
+        except ValueError:
+            vendor.momo_charge_percent = 0
+        vendor.momo_charge_min = int(re.sub(r'\D', '', request.form.get('momo_charge_min', '')) or 0)
+        if not vendor.momo_charge_percent:
+            return 'Please type the percentage for mobile money charges (e.g. 2).'
+    elif vendor.momo_charge_mode == 'bands':
+        rows = []
+        for up_to, fee in zip(request.form.getlist('band_up_to'), request.form.getlist('band_fee')):
+            up_to, fee = re.sub(r'\D', '', up_to), re.sub(r'\D', '', fee)
+            if fee:
+                rows.append([int(up_to or 0), int(fee)])
+        if not rows:
+            return 'Please fill in at least one mobile money charge band, or choose "No charges".'
+        vendor.momo_charge_bands = json.dumps(rows)
 
     # Shop photo: a new upload replaces the old one; "remove" clears it
     try:
@@ -1453,7 +1487,7 @@ def vendor_order_status(order_id):
         return redirect(url_for('vendor_dashboard'))
     order.status = new_status
     order.seen_at = order.seen_at or datetime.utcnow()
-    if new_status == 'delivered' and order.payment_method != 'momo_now':
+    if new_status == 'delivered' and order.payment_method not in PAY_NOW_METHODS:
         order.payment_status = 'paid'      # cash / mobile money collected at the door
     db.session.commit()
     alert_status(order)

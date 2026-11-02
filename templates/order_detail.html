@@ -51,7 +51,7 @@
         <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn>{{ icon('bell', 16) }} Turn on notifications</button>
       </div>
     {% endif %}
-    {% if current_user.id == order.customer_id and order.payment_method == 'momo_now' and order.status != 'cancelled' %}
+    {% if current_user.id == order.customer_id and order.payment_method in pay_now_methods and order.status != 'cancelled' %}
       <div style="margin-top:18px">{% include "_pay_now.html" %}</div>
     {% elif current_user.id == order.vendor.owner_id or current_user.is_admin %}
       {% set o = order %}<div style="margin-top:18px">{% include "_pay_confirm.html" %}</div>
@@ -72,6 +72,7 @@
     <div class="summary">
       <div><span>Subtotal</span><span>{{ order.subtotal|ugx }}</span></div>
       <div><span>Delivery</span><span>{{ order.delivery_fee|ugx }}</span></div>
+      {% if order.momo_charge and order.momo_charge > 0 %}<div><span>Mobile money charges</span><span>{{ order.momo_charge|ugx }}</span></div>{% endif %}
       <div class="total"><span>Total</span><span>{{ order.total|ugx }}</span></div>
     </div>
     <div class="card" style="margin-top:24px">

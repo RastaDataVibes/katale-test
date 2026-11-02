@@ -66,6 +66,53 @@
   <label for="momo_name">Name registered on these accounts</label>
   <input id="momo_name" name="momo_name" value="{{ f.momo_name or '' }}" placeholder="Exactly as it shows when someone sends you money">
 </div>
+
+{% set cmode = f.momo_charge_mode if (f.momo_charge_mode is defined and f.momo_charge_mode) else 'none' %}
+{% set bands = (f.charge_bands if f.charge_bands is defined else []) %}
+<div class="paynow-box charges-box">
+  <strong>Mobile money charges</strong>
+  <span class="muted">When a customer pays to your mobile money <b>number</b> (now or on delivery), they can add the charges you lose when cashing out. Cash and MoMoPay / Airtel Money Pay codes are never charged.</span>
+  <div class="mode-choices">
+    <label class="pay-choice"><input type="radio" name="momo_charge_mode" value="none" {{ 'checked' if cmode == 'none' }}><span><strong>No charges</strong></span></label>
+    <label class="pay-choice"><input type="radio" name="momo_charge_mode" value="bands" {{ 'checked' if cmode == 'bands' }}><span><strong>By amount</strong><small class="muted">like MTN and Airtel's own charges</small></span></label>
+    <label class="pay-choice"><input type="radio" name="momo_charge_mode" value="percent" {{ 'checked' if cmode == 'percent' }}><span><strong>Percentage</strong><small class="muted">e.g. 2% of the order</small></span></label>
+  </div>
+
+  <div class="mode-panel" data-mode="bands">
+    <div class="band-head"><span>Order total up to (UGX)</span><span>Customer adds (UGX)</span></div>
+    {% set examples = [(30000, 1000), (100000, 2500), (500000, 7000)] %}
+    {% for i in range(5) %}
+      {% set row = (bands|selectattr(0, 'gt', 0)|list)[i] if (bands|selectattr(0, 'gt', 0)|list)|length > i else none %}
+      <div class="band-row">
+        <input name="band_up_to" inputmode="numeric" value="{{ row[0] if row else '' }}" placeholder="{{ examples[i][0] if i < 3 else '' }}">
+        <input name="band_fee" inputmode="numeric" value="{{ row[1] if row else '' }}" placeholder="{{ examples[i][1] if i < 3 else '' }}">
+      </div>
+    {% endfor %}
+    {% set above = (bands|selectattr(0, 'equalto', 0)|list) %}
+    <div class="band-row">
+      <input value="More than that" disabled><input type="hidden" name="band_up_to" value="0">
+      <input name="band_fee" inputmode="numeric" value="{{ above[0][1] if above else '' }}" placeholder="12000">
+    </div>
+    <p class="muted" style="font-size:13px;margin-top:6px">Tip: check your network's current withdraw charges (MTN *165#, Airtel *185#) and fill in what you actually pay. Leave rows empty if you don't need them.</p>
+  </div>
+
+  <div class="mode-panel" data-mode="percent">
+    <div class="row">
+      <div><label for="momo_charge_percent">Percentage of the order</label><input id="momo_charge_percent" name="momo_charge_percent" type="number" step="0.1" min="0" max="10" value="{{ f.momo_charge_percent if (f.momo_charge_percent is defined and f.momo_charge_percent) else '' }}" placeholder="e.g. 2"></div>
+      <div><label for="momo_charge_min">Smallest charge (UGX)</label><input id="momo_charge_min" name="momo_charge_min" inputmode="numeric" value="{{ f.momo_charge_min if (f.momo_charge_min is defined and f.momo_charge_min) else '' }}" placeholder="e.g. 500"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  function show() {
+    var m = (document.querySelector('input[name=momo_charge_mode]:checked') || {}).value || 'none';
+    document.querySelectorAll('.mode-panel').forEach(function (p) { p.hidden = p.dataset.mode !== m; });
+  }
+  document.querySelectorAll('input[name=momo_charge_mode]').forEach(function (r) { r.addEventListener('change', show); });
+  show();
+})();
+</script>
 <script>
 (function () {
   var r = document.getElementById('delivery_radius_km'), b = document.getElementById('delivery_base_fee'), k = document.getElementById('delivery_per_km');

@@ -1,6 +1,8 @@
 {# How to pay the shop now by mobile money, shown on the customer's order page #}
 {% from "_icons.html" import icon %}
 {% set v = order.vendor %}
+{% set show_merchant = order.payment_method in ('momo_merchant', 'momo_now') %}
+{% set show_numbers = order.payment_method in ('momo_number', 'momo_now') %}
 <div class="card paynow-card" id="pay">
   {% if order.payment_status == 'paid' %}
     <div class="pay-state ok">{{ icon('check-circle', 22) }} <div><strong>Payment confirmed</strong><span class="muted">{{ v.name }} received your {{ order.total|ugx }}.</span></div></div>
@@ -13,28 +15,28 @@
     <h3>{{ icon('phone', 20) }} Pay {{ order.total|ugx }} now</h3>
     <p class="muted">Pay from your phone using any option below, then tap <strong>I've paid</strong>.</p>
     <div class="pay-options">
-      {% if v.mtn_merchant %}
+      {% if show_merchant and v.mtn_merchant %}
       <div class="pay-opt mtn">
         <span class="net">MTN MoMoPay</span>
         <p>Dial <b>*165#</b> &rarr; <b>Payments</b> &rarr; <b>MoMoPay</b>, enter the merchant code and amount.</p>
         <div class="copy-line"><span>Merchant code</span><strong>{{ v.mtn_merchant }}</strong><button type="button" class="copy" data-copy="{{ v.mtn_merchant }}">Copy</button></div>
       </div>
       {% endif %}
-      {% if v.airtel_merchant %}
+      {% if show_merchant and v.airtel_merchant %}
       <div class="pay-opt airtel">
         <span class="net">Airtel Money Pay</span>
         <p>Dial <b>*185#</b> &rarr; <b>Make Payments</b> &rarr; <b>Merchant</b>, enter the merchant code and amount.</p>
         <div class="copy-line"><span>Merchant code</span><strong>{{ v.airtel_merchant }}</strong><button type="button" class="copy" data-copy="{{ v.airtel_merchant }}">Copy</button></div>
       </div>
       {% endif %}
-      {% if v.mtn_number %}
+      {% if show_numbers and v.mtn_number %}
       <div class="pay-opt mtn">
         <span class="net">MTN Mobile Money</span>
         <p>Dial <b>*165#</b> &rarr; <b>Send Money</b>. Check the name shows <b>{{ v.momo_name }}</b> before you confirm.</p>
         <div class="copy-line"><span>Number</span><strong>{{ v.mtn_number }}</strong><button type="button" class="copy" data-copy="{{ v.mtn_number }}">Copy</button></div>
       </div>
       {% endif %}
-      {% if v.airtel_number %}
+      {% if show_numbers and v.airtel_number %}
       <div class="pay-opt airtel">
         <span class="net">Airtel Money</span>
         <p>Dial <b>*185#</b> &rarr; <b>Send Money</b>. Check the name shows <b>{{ v.momo_name }}</b> before you confirm.</p>
@@ -42,6 +44,7 @@
       </div>
       {% endif %}
     </div>
+    {% if order.momo_charge and order.momo_charge > 0 %}<p class="muted" style="font-size:13.5px;margin:0 0 4px">Includes {{ order.momo_charge|ugx }} mobile money charges.</p>{% endif %}
     <div class="copy-line amount"><span>Amount</span><strong>{{ order.total|ugx }}</strong><button type="button" class="copy" data-copy="{{ order.total|int }}">Copy</button></div>
     <form method="POST" action="{{ url_for('customer_says_paid', order_id=order.id) }}" class="paid-form">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

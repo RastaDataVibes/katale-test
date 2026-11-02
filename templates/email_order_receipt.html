@@ -5,7 +5,8 @@
   <table style="width:100%;border-collapse:collapse;font-size:15px">
     {% for i in order.items %}<tr><td style="padding:5px 0">{{ i.quantity }} &times; {{ i.name }}</td><td style="text-align:right">UGX {{ '{:,.0f}'.format(i.line_total) }}</td></tr>{% endfor %}
     <tr><td style="padding:5px 0;color:#5b6370">Delivery{% if order.distance_km %} ({{ '%.1f'|format(order.distance_km) }} km){% endif %}</td><td style="text-align:right;color:#5b6370">UGX {{ '{:,.0f}'.format(order.delivery_fee) }}</td></tr>
-    <tr><td style="padding:8px 0;border-top:1px solid #e7e5df"><strong>Total paid ({{ 'cash' if order.payment_method == 'cash' else 'mobile money' }})</strong></td><td style="text-align:right;border-top:1px solid #e7e5df"><strong>UGX {{ '{:,.0f}'.format(order.total) }}</strong></td></tr>
+    {% if order.momo_charge and order.momo_charge > 0 %}<tr><td style="padding:5px 0;color:#5b6370">Mobile money charges</td><td style="text-align:right;color:#5b6370">UGX {{ '{:,.0f}'.format(order.momo_charge) }}</td></tr>{% endif %}
+    <tr><td style="padding:8px 0;border-top:1px solid #e7e5df"><strong>Total paid ({{ payment_methods.get(order.payment_method, 'mobile money')|lower }})</strong></td><td style="text-align:right;border-top:1px solid #e7e5df"><strong>UGX {{ '{:,.0f}'.format(order.total) }}</strong></td></tr>
   </table>
   <p style="margin:24px 0"><a href="{{ link }}" style="color:#2d6a4f;font-weight:bold">View this order</a></p>
   <p style="color:#5b6370;font-size:13px">Katale, a Gridcraft product</p>
