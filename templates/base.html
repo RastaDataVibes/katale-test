@@ -131,6 +131,9 @@
 
 {# ── Phone bottom bar (only shows on small screens) ──── #}
 {% set ep = request.endpoint or '' %}
+<template id="ico-bell">{{ icon('bell', 16) }}</template>
+<template id="ico-check">{{ icon('check', 16) }}</template>
+<template id="ico-bell-off">{{ icon('bell-off', 16) }}</template>
 <nav class="bottom-nav" aria-label="Main">
   <a href="{{ url_for('home') }}" class="{{ 'on' if ep == 'home' }}">{{ icon('home', 22) }}<span>Home</span></a>
   <a href="{{ url_for('shops') }}" class="{{ 'on' if ep in ('shops', 'shop_detail') }}">{{ icon('shop', 22) }}<span>Shops</span></a>
@@ -160,44 +163,86 @@
     installEvt.prompt(); installEvt.userChoice.finally(function () { installEvt = null; document.getElementById('install-btn').hidden = true; });
   });
 
-  // ── Notifications ("Turn on notifications" buttons) ──
-  window.katalePush = {
-    supported: 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window,
-    state: function () { return this.supported ? Notification.permission : 'unsupported'; },
-    turnOn: async function () {
-      if (!this.supported) {
-        alert(/iPhone|iPad/.test(navigator.userAgent)
-          ? 'On iPhone: first tap Share, then "Add to Home Screen", open Katale from the home screen and turn on notifications there.'
-          : 'This browser cannot show notifications. Try Chrome.');
-        return false;
-      }
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') { alert('Notifications are blocked. Allow them for this site in your browser settings (the icon next to the web address).'); return false; }
-      const reg = await navigator.serviceWorker.register('/sw.js');
+  // ── Notifications on/off buttons ──
+  // States: on / off / blocked / unsupported. A line of text under the button explains each one.
+  (function () {
+    var supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    var token = document.querySelector('meta[name=csrf-token]').content;
+    var BELL = document.getElementById('ico-bell').innerHTML, CHECK = document.getElementById('ico-check').innerHTML,
+        OFF = document.getElementById('ico-bell-off').innerHTML;
+
+    async function currentSub() {
+      if (!supported) return null;
+      var reg = await navigator.serviceWorker.getRegistration('/');
+      return reg ? reg.pushManager.getSubscription() : null;
+    }
+    async function state() {
+      if (!supported) return 'unsupported';
+      if (Notification.permission === 'denied') return 'blocked';
+      if (Notification.permission === 'granted' && await currentSub()) return 'on';
+      return 'off';
+    }
+    var NOTES = {
+      on: 'Notifications are on for this device. Tap the button to turn them off.',
+      off: 'Off. Tap to get a pop-up for every order, even when Katale is closed.',
+      blocked: 'Your browser is blocking notifications for Katale. Click the icon to the left of the web address (or Settings > Site settings > Notifications) and choose Allow, then reload this page.',
+      unsupported: isIOS ? 'On iPhone, first install Katale: tap Share, then "Add to Home Screen". Open Katale from your home screen and turn notifications on there.'
+                         : 'This browser cannot show notifications. Please use Chrome.'
+    };
+    function paint(btn, st, extra) {
+      btn.dataset.state = st;
+      btn.classList.toggle('on', st === 'on');
+      btn.classList.toggle('blocked', st === 'blocked' || st === 'unsupported');
+      btn.innerHTML = st === 'on' ? CHECK + ' Notifications on'
+                    : st === 'blocked' ? OFF + ' Blocked by your browser'
+                    : st === 'unsupported' ? OFF + ' Not available here'
+                    : BELL + ' ' + (btn.dataset.offLabel || 'Turn on notifications');
+      var note = btn.parentNode.querySelector('.push-note');
+      if (!note) { note = document.createElement('p'); note.className = 'push-note'; btn.insertAdjacentElement('afterend', note); }
+      note.textContent = extra || NOTES[st];
+      note.className = 'push-note ' + st;
+    }
+    async function refreshAll(extra) {
+      var st = await state();
+      document.querySelectorAll('[data-push-btn]').forEach(function (b) { paint(b, st, extra); });
+    }
+    async function turnOn() {
+      var perm = await Notification.requestPermission();
+      if (perm !== 'granted') return refreshAll();
+      var reg = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
-      const key = (await (await fetch('/push/key')).json()).key;
-      const pad = '='.repeat((4 - key.length % 4) % 4), raw = atob((key + pad).replace(/-/g, '+').replace(/_/g, '/'));
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) });
-      const token = document.querySelector('meta[name=csrf-token]').content;
-      await fetch('/push/subscribe', { method: 'POST', credentials: 'same-origin',
+      var key = (await (await fetch('/push/key')).json()).key;
+      var pad = '='.repeat((4 - key.length % 4) % 4), raw = atob((key + pad).replace(/-/g, '+').replace(/_/g, '/'));
+      var sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, function (c) { return c.charCodeAt(0); }) });
+      var r = await fetch('/push/subscribe', { method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token }, body: JSON.stringify(sub) });
+      if (!r.ok) throw new Error('save failed');
       await fetch('/push/test', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': token } });
-      return true;
+      return refreshAll('Done! You should see a test pop-up now. You will get one for every order.');
     }
-  };
-  document.querySelectorAll('[data-push-btn]').forEach(function (b) {
-    function show() {
-      var s = window.katalePush.state();
-      if (s === 'granted') { b.innerHTML = b.dataset.onHtml || 'Notifications on'; b.classList.add('on'); }
+    async function turnOff() {
+      var sub = await currentSub();
+      if (sub) {
+        await fetch('/push/unsubscribe', { method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token }, body: JSON.stringify({ endpoint: sub.endpoint }) });
+        await sub.unsubscribe();
+      }
+      return refreshAll('Turned off for this device. You will not get order pop-ups here.');
     }
-    show();
-    b.addEventListener('click', function () {
-      b.disabled = true;
-      window.katalePush.turnOn().then(function () { show(); }).catch(function () {
-        alert('Could not turn on notifications. Please try again.');
-      }).finally(function () { b.disabled = false; });
+    document.querySelectorAll('[data-push-btn]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var st = b.dataset.state;
+        if (st === 'blocked' || st === 'unsupported') { refreshAll(); return; }
+        b.disabled = true;
+        try { if (st === 'on') await turnOff(); else await turnOn(); }
+        catch (err) { refreshAll('Something went wrong. Please try again.'); }
+        finally { b.disabled = false; }
+      });
     });
-  });
+    if (document.querySelector('[data-push-btn]')) refreshAll();
+    window.katalePushRefresh = refreshAll;
+  })();
 
   // Close the account menu when you tap anywhere else
   document.addEventListener('click', function (e) {

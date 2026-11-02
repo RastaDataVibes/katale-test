@@ -922,6 +922,15 @@ def push_subscribe():
     return {'ok': True}
 
 
+@app.route('/push/unsubscribe', methods=['POST'])
+@login_required
+def push_unsubscribe():
+    endpoint = (request.get_json(silent=True) or {}).get('endpoint')
+    PushSubscription.query.filter_by(endpoint=endpoint, user_id=get_current_user().id).delete()
+    db.session.commit()
+    return {'ok': True}
+
+
 @app.route('/push/test', methods=['POST'])
 @login_required
 def push_test():

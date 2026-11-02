@@ -46,7 +46,7 @@
 
   // Guide: open until notifications are on; tick steps that are done
   var guide = document.getElementById('alert-guide');
-  var pushOn = window.Notification && Notification.permission === 'granted';
+  var pushOn = window.Notification && Notification.permission === 'granted';   // (button shows the exact state)
   var installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   if (pushOn) document.getElementById('g-push').classList.add('done');
   if (installed) document.getElementById('g-install').classList.add('done');
@@ -94,7 +94,7 @@
           <span class="g-no">1</span>
           <div><strong>Turn on order notifications</strong>
             <p class="muted">A pop-up with your phone's sound for every new order, even when Katale is closed. It rings again after 1 and 2 minutes until you tap it.</p>
-            <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-on-html="{{ (icon('check', 16) ~ ' Notifications on')|forceescape }}">{{ icon('bell', 16) }} Turn on</button>
+            <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-off-label="Turn on">{{ icon('bell', 16) }} Turn on</button>
           </div>
         </li>
         <li id="g-install">
@@ -118,7 +118,7 @@
     <div class="orders-head">
       <h2 style="margin:0">Active orders</h2>
       <div class="actions" style="margin:0">
-        <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-on-html="{{ (icon('check', 16) ~ ' Notifications on')|forceescape }}">{{ icon('bell', 16) }} Turn on order notifications</button>
+        <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-off-label="Turn on order notifications">{{ icon('bell', 16) }} Turn on order notifications</button>
         <button type="button" class="btn btn-outline btn-small" id="sound-btn"
                 data-icon-on="{{ icon('sound', 16)|forceescape }}" data-icon-off="{{ icon('bell-off', 16)|forceescape }}">Turn on sound</button>
       </div>

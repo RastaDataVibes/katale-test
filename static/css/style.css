@@ -477,3 +477,12 @@ a.order-row:hover{box-shadow:var(--shadow);}
 .guide-steps li.done .g-no{background:var(--green-mid); color:#fff; font-size:0;}
 .guide-steps li.done .g-no::after{content:'✓'; font-size:15px;}
 .guide-steps li.done strong{text-decoration:line-through; color:var(--muted);}
+
+/* notification on/off button states */
+.push-btn.on{background:var(--green-tint); color:var(--green-dark); border:1.5px solid var(--green-light);}
+.push-btn.blocked{background:var(--red-tint); color:var(--red);}
+.push-note{flex-basis:100%; width:100%; font-size:13px; line-height:1.45; margin:6px 0 0; color:var(--muted);}
+.push-note.on{color:var(--green-mid);}
+.push-note.blocked,.push-note.unsupported{color:var(--red);}
+.check-row{flex-wrap:wrap;}
+.orders-head .actions{flex-wrap:wrap; justify-content:flex-end; max-width:520px;}
