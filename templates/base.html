@@ -9,6 +9,9 @@
   <meta name="theme-color" content="#1a3d2b">
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Katale">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
@@ -63,6 +66,7 @@
             <span class="muted">{{ current_user.email }}</span>
           </div>
           <a href="{{ url_for('my_orders') }}">{{ icon('orders', 18) }} My orders</a>
+          <a href="{{ url_for('account') }}">{{ icon('user', 18) }} My account</a>
           {% if current_user.vendor %}
             <a href="{{ url_for('vendor_dashboard') }}">{{ icon('store-open', 18) }} My shop</a>
             <a href="{{ url_for('vendor_subscription') }}">{{ icon('cash', 18) }} Subscription</a>
@@ -115,6 +119,7 @@
       </div>
     </div>
     <div class="footer-links">
+      <button type="button" class="install-btn" id="install-btn" hidden>{{ icon('phone', 16) }} Install the Katale app</button>
       <a href="{{ url_for('shops') }}">Browse shops</a>
       <a href="{{ url_for('vendor_apply') }}">Sell on {{ site_name }}</a>
       {% if not current_user %}<a href="{{ url_for('register') }}">Create an account</a>{% endif %}
@@ -142,6 +147,18 @@
 </nav>
 
 <script>
+  // Installable app: register the service worker and show "Install" when the browser allows it
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function () {}); }
+  var installEvt = null;
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); installEvt = e;
+    var b = document.getElementById('install-btn'); if (b) b.hidden = false;
+  });
+  document.getElementById('install-btn').addEventListener('click', function () {
+    if (!installEvt) return;
+    installEvt.prompt(); installEvt.userChoice.finally(function () { installEvt = null; document.getElementById('install-btn').hidden = true; });
+  });
+
   // Close the account menu when you tap anywhere else
   document.addEventListener('click', function (e) {
     document.querySelectorAll('details.account[open]').forEach(function (d) {

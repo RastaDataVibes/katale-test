@@ -11,7 +11,7 @@
           <strong>{{ o.reference }} &middot; {{ o.vendor.name }}</strong>
           <span class="tag {% if o.status == 'cancelled' %}off{% elif o.status != 'delivered' %}warn{% endif %}">{{ o.status_label }}</span>
         </div>
-        <span class="muted">{{ o.date_placed.strftime('%d %b %Y') }} &middot; {{ o.items|length }} item(s) &middot; {{ o.total|ugx }}</span>
+        <span class="muted">{{ o.date_placed|local('%d %b %Y') }} &middot; {{ o.items|length }} item(s) &middot; {{ o.total|ugx }}</span>
       </a>
     {% else %}
       <div class="empty"><span class="empty-ico">{{ icon('orders', 28) }}</span><p>You have not ordered anything yet.</p><a class="btn" href="{{ url_for('shops') }}">Browse shops</a></div>

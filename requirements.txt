@@ -6,3 +6,4 @@ gunicorn
 Authlib
 requests
 cloudinary
+Flask-WTF

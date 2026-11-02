@@ -2,13 +2,50 @@
 {% from "_map_picker.html" import map_view %}
 {% from "_icons.html" import icon %}
 {% block title %}{{ order.reference }} | {{ site_name }}{% endblock %}
+{% block scripts %}
+<script>
+// Light up the steps done so far, and check for changes every 20 seconds
+(function () {
+  var box = document.getElementById('tracker');
+  if (!box || box.classList.contains('cancelled')) return;
+  var order = ['placed', 'accepted', 'preparing', 'out_for_delivery', 'delivered'];
+  function paint(status) {
+    var at = order.indexOf(status);
+    box.querySelectorAll('.t-step').forEach(function (el, i) {
+      el.classList.toggle('done', i < at || status === 'delivered');
+      el.classList.toggle('now', i === at && status !== 'delivered');
+    });
+    box.dataset.status = status;
+  }
+  paint(box.dataset.status);
+  var timer = setInterval(function () {
+    fetch(box.dataset.url, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.status === 'cancelled') { location.reload(); return; }
+      if (d.status !== box.dataset.status) paint(d.status);
+      if (d.status === 'delivered') clearInterval(timer);
+    }).catch(function () {});
+  }, 20000);
+})();
+</script>
+{% endblock %}
 {% block content %}
 <section>
   <div class="wrap">
     <h1>{{ order.reference }}</h1>
-    <p class="muted" style="margin-bottom:20px">From <strong>{{ order.vendor.name }}</strong> &middot; {{ order.date_placed.strftime('%d %b %Y, %H:%M') }} UTC</p>
-    <p style="margin-bottom:24px">
-      <span class="tag {% if order.status == 'cancelled' %}off{% elif order.status != 'delivered' %}warn{% endif %}">{{ order.status_label }}</span>
+    <p class="muted" style="margin-bottom:20px">From <strong>{{ order.vendor.name }}</strong> &middot; {{ order.date_placed|local }}</p>
+
+    {% set steps = [('placed','Placed','orders'),('accepted','Accepted','check-circle'),('preparing','Preparing','basket'),('out_for_delivery','On the way','bike'),('delivered','Delivered','home')] %}
+    <div class="tracker {{ 'cancelled' if order.status == 'cancelled' }}" id="tracker" data-status="{{ order.status }}"
+         data-url="{{ url_for('order_status_json', order_id=order.id) }}">
+      {% if order.status == 'cancelled' %}
+        <div class="tracker-cancel">{{ icon('info', 20) }} This order was cancelled. You have not been charged.</div>
+      {% else %}
+        {% for key, label, ico in steps %}
+          <div class="t-step" data-key="{{ key }}"><span class="t-dot">{{ icon(ico, 18) }}</span><span class="t-label">{{ label }}</span></div>
+        {% endfor %}
+      {% endif %}
+    </div>
+    <p style="margin:18px 0 24px">
       <span class="tag">{{ payment_methods.get(order.payment_method, order.payment_method) }} &middot; {{ order.payment_status }}</span>
     </p>
     <div class="table-wrap">
@@ -47,6 +84,7 @@
     </div>
     {% if current_user.id == order.customer_id and order.status == 'placed' %}
       <form action="{{ url_for('cancel_order', order_id=order.id) }}" method="POST" style="margin-top:20px">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-danger" type="submit">Cancel order</button>
       </form>
     {% endif %}

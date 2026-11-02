@@ -57,6 +57,7 @@
             <span class="price">{{ p.price|ugx }}{% if p.unit %} <span class="muted">/ {{ p.unit }}</span>{% endif %}</span>
             {% if p.in_stock and vendor.is_open and vendor.is_approved %}
               <form class="add-form" action="{{ url_for('cart_add') }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="product_id" value="{{ p.id }}">
                 <input type="number" name="qty" value="1" min="1" max="50" aria-label="Quantity">
                 <button class="btn btn-small" type="submit">{{ icon('plus', 16) }} Add</button>

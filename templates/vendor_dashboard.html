@@ -1,6 +1,46 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% block title %}My shop | {{ site_name }}{% endblock %}
+{% block scripts %}
+<script>
+// Check for new orders every 30 seconds. When one arrives: sound + show it.
+(function () {
+  var known = Math.max(0, {{ ([0] + active|map(attribute='id')|list + past|map(attribute='id')|list)|max }});
+  var soundOn = false, ctx = null, btn = document.getElementById('sound-btn');
+  try { soundOn = localStorage.getItem('katale_sound') === '1'; } catch (e) {}
+  function label() { btn.innerHTML = soundOn ? '🔔 Sound alerts on' : '🔕 Turn on sound alerts'; }
+  label();
+  function beep() {
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.25, 0.5].forEach(function (t) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.25, ctx.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.2);
+        o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.21);
+      });
+    } catch (e) {}
+  }
+  // Browsers only allow sound after you tap something on the page, hence the button
+  btn.addEventListener('click', function () {
+    soundOn = !soundOn; try { localStorage.setItem('katale_sound', soundOn ? '1' : '0'); } catch (e) {}
+    label(); if (soundOn) beep();
+  });
+  document.addEventListener('click', function once() { if (soundOn && !ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } document.removeEventListener('click', once); });
+  setInterval(function () {
+    fetch("{{ url_for('vendor_poll') }}", { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.latest_id > known) {
+        known = d.latest_id;
+        if (soundOn) beep();
+        document.getElementById('new-order-bar').hidden = false;
+        document.title = '(' + d.waiting + ') New order - Katale';
+        setTimeout(function () { location.reload(); }, 2500);
+      }
+    }).catch(function () {});
+  }, 30000);
+})();
+</script>
+{% endblock %}
 {% block content %}
 <section>
   <div class="wrap">
@@ -15,6 +55,7 @@
         <a class="btn btn-outline" href="{{ url_for('vendor_settings') }}">{{ icon('settings', 16) }} Shop settings</a>
         <a class="btn btn-outline" href="{{ url_for('vendor_subscription') }}">{{ icon('cash', 16) }} Subscription</a>
         <form action="{{ url_for('vendor_toggle_open') }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn" type="submit">{{ 'Close shop' if vendor.is_open else 'Open shop' }}</button>
         </form>
       </div>
@@ -33,7 +74,11 @@
       <p class="muted" style="margin-top:14px">{{ icon('bike', 15) }} You deliver up to {{ '%g'|format(vendor.delivery_radius_km) }} km · {{ vendor.delivery_base_fee|ugx }} + {{ vendor.delivery_per_km|ugx }} per km</p>
     {% endif %}
 
-    <h2 style="margin-top:36px">Active orders</h2>
+    <div class="orders-head">
+      <h2 style="margin:0">Active orders</h2>
+      <button type="button" class="btn btn-outline btn-small" id="sound-btn">{{ icon('info', 16) }} Turn on sound alerts</button>
+    </div>
+    <div class="new-order-bar" id="new-order-bar" hidden>{{ icon('orders', 20) }} <span>New order! Loading…</span></div>
     {% for o in active %}
       <div class="order-row">
         <div class="order-head">
@@ -53,6 +98,7 @@
         <div class="actions">
           {% for s in next_statuses.get(o.status, []) %}
             <form action="{{ url_for('vendor_order_status', order_id=o.id) }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="status" value="{{ s }}">
               <button class="btn btn-small {% if s == 'cancelled' %}btn-danger{% endif %}" type="submit">{{ status_labels[s] }}</button>
             </form>
@@ -74,6 +120,7 @@
         </div>
         <div class="prod-actions">
           <form action="{{ url_for('vendor_toggle_product', product_id=p.id) }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-outline btn-small" type="submit">{{ 'Out of stock' if p.in_stock else 'Back in stock' }}</button>
           </form>
           <a class="btn btn-light btn-small" href="{{ url_for('vendor_edit_product', product_id=p.id) }}">Edit</a>
@@ -84,6 +131,7 @@
     {% endfor %}
 
     <form class="card" action="{{ url_for('vendor_add_product') }}" method="POST" enctype="multipart/form-data" style="margin-top:24px" id="add-product">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <h3>{{ icon('plus', 20) }} Add a product</h3>
       {% set p = none %}
       {% include "_product_fields.html" %}
@@ -95,7 +143,7 @@
       {% for o in past %}
         <div class="order-row"><div class="order-head"><strong>{{ o.reference }} &middot; {{ o.customer.name }}</strong>
           <span class="tag {% if o.status == 'cancelled' %}off{% endif %}">{{ o.status_label }}</span></div>
-          <span class="muted">{{ o.total|ugx }} &middot; {{ o.date_placed.strftime('%d %b %Y') }}</span></div>
+          <span class="muted">{{ o.total|ugx }} &middot; {{ o.date_placed|local('%d %b %Y') }}</span></div>
       {% endfor %}
     {% endif %}
   </div>

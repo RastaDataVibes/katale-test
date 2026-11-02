@@ -20,6 +20,7 @@
             {% else %}<span class="tag off">Expired</span><br><span class="muted">hidden from customers</span>{% endif %}
             {% if v.is_approved %}
             <form class="inline-form" action="{{ url_for('admin_free_days', vendor_id=v.id) }}" method="POST" style="margin-top:6px">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="number" name="days" value="30" min="1" max="366" aria-label="Free days">
               <button class="btn btn-light btn-small" type="submit">Give free days</button>
             </form>
@@ -27,6 +28,7 @@
           </td>
           <td class="num">
             <form class="inline-form" action="{{ url_for('admin_toggle_vendor', vendor_id=v.id) }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-small {% if v.is_approved %}btn-danger{% endif %}" type="submit">{{ 'Hide' if v.is_approved else 'Approve' }}</button>
             </form>
           </td>
@@ -42,7 +44,7 @@
     {% for o in recent_orders %}
       <a class="order-row" href="{{ url_for('order_detail', order_id=o.id) }}" style="display:block">
         <div class="order-head"><strong>{{ o.reference }} &middot; {{ o.vendor.name }}</strong><span class="tag">{{ o.status_label }}</span></div>
-        <span class="muted">{{ o.customer.name }} &middot; {{ o.total|ugx }} &middot; {{ o.date_placed.strftime('%d %b %Y') }}</span>
+        <span class="muted">{{ o.customer.name }} &middot; {{ o.total|ugx }} &middot; {{ o.date_placed|local('%d %b %Y') }}</span>
       </a>
     {% else %}
       <div class="empty">No orders yet.</div>

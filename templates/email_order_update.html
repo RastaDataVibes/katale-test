@@ -1,0 +1,9 @@
+<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1c1c1e">
+  <h2 style="color:#1a3d2b">{{ order.status_label }}</h2>
+  <p>Hi {{ order.customer.name.split()[0] }},</p>
+  <p>Your order <strong>{{ order.reference }}</strong> from <strong>{{ order.vendor.name }}</strong> is now: <strong>{{ order.status_label|lower }}</strong>.</p>
+  {% if order.status == 'out_for_delivery' %}<p>Please keep your phone nearby. Have UGX {{ '{:,.0f}'.format(order.total) }} ready ({{ 'cash' if order.payment_method == 'cash' else 'mobile money' }}).</p>{% endif %}
+  {% if order.status == 'cancelled' %}<p>The shop could not take this order. You have not been charged anything.</p>{% endif %}
+  <p style="margin:24px 0"><a href="{{ link }}" style="background:#2d6a4f;color:#fff;padding:12px 22px;border-radius:50px;text-decoration:none;font-weight:bold">Track your order</a></p>
+  <p style="color:#5b6370;font-size:13px">Katale, a Gridcraft product</p>
+</div>

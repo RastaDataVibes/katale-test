@@ -42,6 +42,7 @@
           </ul>
         </div>
         <form method="POST" action="{{ url_for('vendor_pay') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if payments_on %}
             <button class="btn" type="submit">{{ icon('phone', 18) }} Pay {{ trader_fee|ugx }}</button>
             <p class="muted" style="margin-top:8px;font-size:13.5px">You'll go to Pesapal's secure page, then come back here.</p>

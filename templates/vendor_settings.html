@@ -3,6 +3,7 @@
 {% block content %}
 <div class="wrap">
   <form class="card form-card wide" method="POST" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <h1>Shop settings</h1>
     <p class="muted">Changes show to customers straight away.</p>
     {% set f = vendor %}

@@ -8,6 +8,7 @@
     <h1>Where should we deliver?</h1>
     <p class="muted" style="margin-bottom:18px">We'll show you the shops that can reach you, with the delivery price for each.</p>
     <form method="POST" class="card">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ next }}">
       {{ map_picker(customer_loc.lat if customer_loc else none, customer_loc.lng if customer_loc else none,
                     address_input_id='address', height=360) }}

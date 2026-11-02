@@ -36,6 +36,9 @@ class User(db.Model):
     # Google's permanent number for this person (set when they use "Continue with Google")
     google_id = db.Column(db.String(64), unique=True, nullable=True)
     avatar_url = db.Column(db.String(500), nullable=True)
+    # How this person wants order alerts
+    notify_whatsapp = db.Column(db.Boolean, default=True, nullable=False)
+    notify_email = db.Column(db.Boolean, default=True, nullable=False)
     default_address = db.Column(db.String(300), nullable=True)
     # Last delivery spot this person used (so we remember it next time)
     default_lat = db.Column(db.Float, nullable=True)

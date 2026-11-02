@@ -1,0 +1,17 @@
+<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1c1c1e">
+  <h2 style="color:#1a3d2b">New order {{ order.reference }}</h2>
+  <p><strong>{{ order.customer.name }}</strong> ordered from {{ order.vendor.name }}:</p>
+  <table style="width:100%;border-collapse:collapse;font-size:15px">
+    {% for i in order.items %}<tr><td style="padding:5px 0">{{ i.quantity }} &times; {{ i.name }}</td><td style="text-align:right">UGX {{ '{:,.0f}'.format(i.line_total) }}</td></tr>{% endfor %}
+    <tr><td style="padding:5px 0;color:#5b6370">Delivery</td><td style="text-align:right;color:#5b6370">UGX {{ '{:,.0f}'.format(order.delivery_fee) }}</td></tr>
+    <tr><td style="padding:8px 0;border-top:1px solid #e7e5df"><strong>Total ({{ 'cash' if order.payment_method == 'cash' else 'mobile money' }} on delivery)</strong></td><td style="text-align:right;border-top:1px solid #e7e5df"><strong>UGX {{ '{:,.0f}'.format(order.total) }}</strong></td></tr>
+  </table>
+  <p style="margin-top:16px"><strong>Deliver to:</strong> {{ order.delivery_address }}{% if order.distance_km %} ({{ '%.1f'|format(order.distance_km) }} km){% endif %}<br>
+  {% if order.delivery_landmark %}<strong>Landmark:</strong> {{ order.delivery_landmark }}<br>{% endif %}
+  <strong>Phone:</strong> {{ order.phone }}{% if order.notes %}<br><strong>Note:</strong> {{ order.notes }}{% endif %}</p>
+  <p style="margin:24px 0">
+    <a href="{{ link }}" style="background:#2d6a4f;color:#fff;padding:12px 22px;border-radius:50px;text-decoration:none;font-weight:bold">Accept the order</a>
+    {% if order.maps_link %}&nbsp; <a href="{{ order.maps_link }}" style="color:#2d6a4f;font-weight:bold">Open in Google Maps</a>{% endif %}
+  </p>
+  <p style="color:#5b6370;font-size:13px">Katale, a Gridcraft product</p>
+</div>

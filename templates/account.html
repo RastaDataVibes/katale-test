@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My account | {{ site_name }}{% endblock %}
+{% block content %}
+<div class="wrap">
+  <form class="card form-card wide" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h1>My account</h1>
+    <p class="muted">{{ current_user.email }}</p>
+    <label for="name">Full name</label>
+    <input id="name" name="name" value="{{ current_user.name }}" required>
+    <label for="phone">Phone / WhatsApp number</label>
+    <input id="phone" name="phone" type="tel" value="{{ current_user.phone or '' }}" placeholder="07XX XXX XXX">
+
+    <h3 class="form-section">{{ icon('info', 20) }} How should we tell you about orders?</h3>
+    <label class="check-row"><input type="checkbox" name="notify_whatsapp" value="1" {{ 'checked' if current_user.notify_whatsapp }}> <span>{{ icon('whatsapp', 18) }} <strong>WhatsApp</strong> <small class="muted">to {% if current_user.vendor and current_user.vendor.phone %}your shop number {{ current_user.vendor.phone }}{% else %}the phone number on each order{% endif %}</small></span></label>
+    <label class="check-row"><input type="checkbox" name="notify_email" value="1" {{ 'checked' if current_user.notify_email }}> <span>{{ icon('orders', 18) }} <strong>Email</strong> <small class="muted">to {{ current_user.email }}</small></span></label>
+    <button class="btn" type="submit">Save</button>
+  </form>
+</div>
+{% endblock %}

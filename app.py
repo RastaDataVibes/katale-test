@@ -1,5 +1,7 @@
 import os
 import re
+import json
+import threading
 from functools import wraps
 from datetime import datetime, timedelta
 
@@ -12,6 +14,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from authlib.integrations.flask_client import OAuth
+from flask_wtf.csrf import CSRFProtect, CSRFError
 import cloudinary
 import cloudinary.uploader
 from sqlalchemy import inspect, text
@@ -38,6 +41,19 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-change-me')
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = bool(os.environ.get('RENDER'))  # https only on the live site (Render sets RENDER)
+
+# ── Form protection (CSRF) ───────────────────────────────────
+# Every form carries a secret code that only Katale can make, so other
+# websites can't secretly submit forms (orders, settings) on someone's behalf.
+app.config['WTF_CSRF_TIME_LIMIT'] = None          # codes last as long as the login does
+csrf = CSRFProtect(app)
+
+
+@app.errorhandler(CSRFError)
+def csrf_failed(e):
+    flash('That page had been open for a while, so we refreshed it. Please try again.', 'error')
+    return redirect(request.referrer or url_for('home'))
+
 
 # ── Google sign-in ───────────────────────────────────────────
 # The two keys come from Google Cloud and are stored in Render's Environment settings.
@@ -185,6 +201,8 @@ NEW_COLUMNS = [
     ('vendors', 'trial_ends', 'TIMESTAMP'),
     ('vendors', 'paid_until', 'TIMESTAMP'),
     ('vendors', 'last_reminder', 'VARCHAR(40)'),
+    ('users', 'notify_whatsapp', 'BOOLEAN NOT NULL DEFAULT TRUE'),
+    ('users', 'notify_email', 'BOOLEAN NOT NULL DEFAULT TRUE'),
 ]
 
 
@@ -383,6 +401,14 @@ def ugx_filter(value):
         return 'UGX 0'
 
 
+@app.template_filter('local')
+def local_time(value, fmt='%d %b %Y, %H:%M'):
+    """Times are saved in UTC; show them in Kampala time (UTC+3)."""
+    if not value:
+        return ''
+    return (value + timedelta(hours=3)).strftime(fmt)
+
+
 @app.context_processor
 def inject_globals():
     cart = _get_cart()
@@ -406,6 +432,38 @@ def inject_globals():
 
 
 # ── Public pages ─────────────────────────────────────────────
+# ── Installable app (PWA) ────────────────────────────────────
+@app.route('/manifest.webmanifest')
+def manifest():
+    data = {
+        'name': 'Katale - your market, delivered', 'short_name': 'Katale',
+        'description': 'Order chicken, groceries, fresh produce and more from shops near you.',
+        'start_url': '/', 'scope': '/', 'display': 'standalone',
+        'background_color': '#faf8f4', 'theme_color': '#1a3d2b',
+        'icons': [
+            {'src': '/static/img/gc-192.png', 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
+            {'src': '/static/img/gc-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any'},
+            {'src': '/static/img/gc-maskable-192.png', 'sizes': '192x192', 'type': 'image/png', 'purpose': 'maskable'},
+            {'src': '/static/img/gc-maskable-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
+        ],
+    }
+    return app.response_class(json.dumps(data), mimetype='application/manifest+json')
+
+
+@app.route('/sw.js')
+def service_worker():
+    # Served from the top of the site so it can work for every page
+    resp = app.send_static_file('sw.js')
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['Service-Worker-Allowed'] = '/'
+    return resp
+
+
+@app.route('/offline')
+def offline():
+    return render_template('offline.html')
+
+
 @app.route('/health')
 def health():
     return 'ok', 200
@@ -516,6 +574,31 @@ def register():
     return render_template('register.html', google_on=bool(GOOGLE_CLIENT_ID))
 
 
+# ── Login limits ─────────────────────────────────────────────
+# After 5 wrong passwords for the same email (or from the same network)
+# within 15 minutes, logging in is paused for 15 minutes.
+FAILED_LOGINS = {}          # key -> list of times
+MAX_TRIES, WINDOW = 5, timedelta(minutes=15)
+
+
+def client_ip():
+    return (request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0]).strip()
+
+
+def too_many_tries(*keys):
+    now = datetime.utcnow()
+    for k in keys:
+        FAILED_LOGINS[k] = [t for t in FAILED_LOGINS.get(k, []) if now - t < WINDOW]
+        if len(FAILED_LOGINS[k]) >= MAX_TRIES:
+            return True
+    return False
+
+
+def note_failed_try(*keys):
+    for k in keys:
+        FAILED_LOGINS.setdefault(k, []).append(datetime.utcnow())
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if get_current_user():
@@ -523,6 +606,10 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
+        keys = ('email:' + email, 'ip:' + client_ip())
+        if too_many_tries(*keys):
+            flash('Too many wrong tries. Please wait 15 minutes, or use "Forgot password?".', 'error')
+            return redirect(url_for('login', next=request.args.get('next')))
         user = User.query.filter_by(email=email).first()
         if user and not user.password_hash:
             flash('This account uses Google. Tap "Continue with Google" to sign in.', 'error')
@@ -530,6 +617,7 @@ def login():
         if user and check_password_hash(user.password_hash, password):
             log_in(user)
             return redirect(safe_next(request.args.get('next')) or url_for('home'))
+        note_failed_try(*keys)
         flash('Incorrect email or password.', 'error')
         return redirect(url_for('login', next=request.args.get('next')))
     return render_template('login.html', google_on=bool(GOOGLE_CLIENT_ID))
@@ -540,6 +628,23 @@ def logout():
     session.clear()
     flash('You have been logged out.', 'success')
     return redirect(url_for('home'))
+
+
+@app.route('/account', methods=['GET', 'POST'])
+@login_required
+def account():
+    user = get_current_user()
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        if name:
+            user.name = name[:120]
+        user.phone = request.form.get('phone', '').strip()[:30] or None
+        user.notify_whatsapp = bool(request.form.get('notify_whatsapp'))
+        user.notify_email = bool(request.form.get('notify_email'))
+        db.session.commit()
+        flash('Saved.', 'success')
+        return redirect(url_for('account'))
+    return render_template('account.html')
 
 
 # ── "Continue with Google" ───────────────────────────────────
@@ -633,10 +738,102 @@ def send_email(to_email, to_name, subject, html):
         return False
 
 
+# ── Order alerts: WhatsApp + email ───────────────────────────
+# WhatsApp goes through Meta's official WhatsApp Business Platform (Cloud API).
+# It switches on by itself when these are in Render's Environment:
+#   WHATSAPP_TOKEN     (permanent access token from Meta)
+#   WHATSAPP_PHONE_ID  (the "Phone number ID" of Katale's WhatsApp number)
+# Messages use templates that Meta approves once (names below, language English).
+WHATSAPP_TOKEN = os.environ.get('WHATSAPP_TOKEN', '').strip()
+WHATSAPP_PHONE_ID = os.environ.get('WHATSAPP_PHONE_ID', '').strip()
+WHATSAPP_ON = bool(WHATSAPP_TOKEN and WHATSAPP_PHONE_ID)
+WA_TEMPLATES = {
+    # name in Meta                 what the {{1}}, {{2}}... in the template mean
+    'new_order':    'katale_new_order',      # 1 order ref, 2 customer name, 3 items, 4 total, 5 area + km, 6 link
+    'order_update': 'katale_order_update',   # 1 customer first name, 2 order ref, 3 shop name, 4 new status, 5 link
+}
+
+
+def send_whatsapp(phone, template_key, params):
+    """Send one WhatsApp template message. Returns True if Meta accepted it."""
+    number = whatsapp_number(phone)
+    if not (WHATSAPP_ON and number and len(number) >= 11):
+        return False
+    body = {
+        'messaging_product': 'whatsapp', 'to': number, 'type': 'template',
+        'template': {'name': WA_TEMPLATES[template_key], 'language': {'code': 'en'},
+                     'components': [{'type': 'body', 'parameters': [
+                         {'type': 'text', 'text': str(p)[:900] or '-'} for p in params]}]},
+    }
+    try:
+        r = requests.post(f'https://graph.facebook.com/v21.0/{WHATSAPP_PHONE_ID}/messages', timeout=20,
+                          headers={'Authorization': f'Bearer {WHATSAPP_TOKEN}'}, json=body)
+        if r.status_code >= 300:
+            app.logger.warning('WhatsApp send failed (%s): %s', r.status_code, r.text[:300])
+        return r.status_code < 300
+    except requests.RequestException:
+        app.logger.exception('WhatsApp send failed')
+        return False
+
+
+def in_background(fn, *args):
+    """Run a slow job (sending messages) without making the person wait."""
+    def run():
+        with app.app_context():
+            try:
+                fn(*args)
+            except Exception:
+                app.logger.exception('Background job failed')
+    threading.Thread(target=run, daemon=True).start()
+
+
+def items_summary(order, limit=4):
+    parts = [f'{i.quantity} x {i.name}' for i in order.items[:limit]]
+    if len(order.items) > limit:
+        parts.append(f'+{len(order.items) - limit} more')
+    return ', '.join(parts)
+
+
+def _alert_new_order(order_id, vendor_link):
+    order = Order.query.get(order_id)
+    vendor, owner = order.vendor, order.vendor.owner
+    area = short_label(order.delivery_address) + (f' ({order.distance_km:.1f} km)' if order.distance_km else '')
+    total = f'UGX {order.total:,.0f}'
+    if owner.notify_whatsapp and vendor.phone:
+        send_whatsapp(vendor.phone, 'new_order',
+                      [order.reference, order.customer.name, items_summary(order), total, area, vendor_link])
+    if owner.notify_email:
+        send_email(owner.email, owner.name, f'New order {order.reference} - {total}',
+                   render_template('email_new_order.html', order=order, link=vendor_link))
+
+
+def _alert_status(order_id, order_link):
+    order = Order.query.get(order_id)
+    customer = order.customer
+    if customer.notify_whatsapp and (order.phone or customer.phone):
+        send_whatsapp(order.phone or customer.phone, 'order_update',
+                      [customer.name.split()[0], order.reference, order.vendor.name, order.status_label, order_link])
+    if customer.notify_email:
+        send_email(customer.email, customer.name, f'{order.reference}: {order.status_label}',
+                   render_template('email_order_update.html', order=order, link=order_link))
+
+
+def alert_new_order(order):
+    in_background(_alert_new_order, order.id, url_for('vendor_dashboard', _external=True))
+
+
+def alert_status(order):
+    in_background(_alert_status, order.id, url_for('order_detail', order_id=order.id, _external=True))
+
+
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
+        if too_many_tries('reset:' + email, 'resetip:' + client_ip()):
+            flash('We already sent several reset links. Please check your inbox and spam, or wait 15 minutes.', 'error')
+            return redirect(url_for('login'))
+        note_failed_try('reset:' + email, 'resetip:' + client_ip())
         user = User.query.filter_by(email=email).first()
         if user:
             link = url_for('reset_password', token=make_reset_token(user), _external=True)
@@ -790,6 +987,7 @@ def checkout():
         db.session.commit()
 
         session.pop('cart', None)
+        alert_new_order(order)
         flash('Order placed. The shop will confirm it shortly.', 'success')
         return redirect(url_for('order_detail', order_id=order.id))
 
@@ -813,6 +1011,17 @@ def order_detail(order_id):
     if not allowed:
         abort(404)
     return render_template('order_detail.html', order=order)
+
+
+@app.route('/orders/<int:order_id>/status.json')
+@login_required
+def order_status_json(order_id):
+    """The order page asks this every 20 seconds to update the progress bar."""
+    user = get_current_user()
+    order = Order.query.get_or_404(order_id)
+    if not (order.customer_id == user.id or order.vendor.owner_id == user.id or user.is_admin):
+        abort(404)
+    return {'status': order.status, 'label': order.status_label}
 
 
 @app.route('/orders/<int:order_id>/cancel', methods=['POST'])
@@ -951,6 +1160,16 @@ def read_product_form(product):
     return None
 
 
+@app.route('/vendor/poll')
+@vendor_required
+def vendor_poll():
+    """My shop asks this every 30 seconds: is there a newer order than the one I'm showing?"""
+    vendor = get_current_user().vendor
+    latest = Order.query.filter_by(vendor_id=vendor.id).order_by(Order.id.desc()).first()
+    waiting = Order.query.filter_by(vendor_id=vendor.id, status='placed').count()
+    return {'latest_id': latest.id if latest else 0, 'waiting': waiting}
+
+
 @app.route('/vendor/products/add', methods=['POST'])
 @vendor_required
 def vendor_add_product():
@@ -1036,6 +1255,7 @@ def vendor_order_status(order_id):
     if new_status == 'delivered':
         order.payment_status = 'paid'
     db.session.commit()
+    alert_status(order)
     flash(f'{order.reference} marked as {order.status_label.lower()}.', 'success')
     return redirect(url_for('vendor_dashboard'))
 
@@ -1217,6 +1437,7 @@ CRON_SECRET = (os.environ.get('CRON_KEY') or os.environ.get('CRON_SECRET') or ''
 
 
 @app.route('/tasks/daily', methods=['GET', 'POST'])
+@csrf.exempt
 def daily_tasks():
     if not CRON_SECRET or request.args.get('key') != CRON_SECRET:
         abort(404)

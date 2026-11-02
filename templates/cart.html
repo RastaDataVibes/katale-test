@@ -17,6 +17,7 @@
             <td class="num">{{ l.product.price|ugx }}</td>
             <td>
               <form class="inline-form" action="{{ url_for('cart_update') }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="product_id" value="{{ l.product.id }}">
                 <input type="number" name="qty" value="{{ l.qty }}" min="1" max="50" aria-label="Quantity">
                 <button class="btn btn-light btn-small" name="action" value="update" type="submit">Update</button>
@@ -43,7 +44,8 @@
         {% endif %}
       </div>
       <div class="actions" style="justify-content:flex-end">
-        <form action="{{ url_for('cart_clear') }}" method="POST"><button class="btn btn-danger" type="submit">Clear cart</button></form>
+        <form action="{{ url_for('cart_clear') }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-danger" type="submit">Clear cart</button></form>
         <a class="btn" href="{{ url_for('checkout') }}">Go to checkout {{ icon('arrow-right', 18) }}</a>
       </div>
     {% else %}
