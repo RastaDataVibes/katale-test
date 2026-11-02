@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 import threading
 from functools import wraps
 from datetime import datetime, timedelta
@@ -18,7 +19,7 @@ from flask_wtf.csrf import CSRFProtect, CSRFError
 import cloudinary
 import cloudinary.uploader
 from sqlalchemy import inspect, text
-from models import db, User, Vendor, Product, Order, OrderItem, Payment, STATUS_LABELS, distance_km
+from models import db, User, Vendor, Product, Order, OrderItem, Payment, Setting, PushSubscription, STATUS_LABELS, distance_km
 
 app = Flask(__name__)
 # Render sits in front of the app; this lets Flask know the real address is https://
@@ -203,6 +204,7 @@ NEW_COLUMNS = [
     ('vendors', 'last_reminder', 'VARCHAR(40)'),
     ('users', 'notify_whatsapp', 'BOOLEAN NOT NULL DEFAULT TRUE'),
     ('users', 'notify_email', 'BOOLEAN NOT NULL DEFAULT TRUE'),
+    ('orders', 'seen_at', 'TIMESTAMP'),
 ]
 
 
@@ -639,7 +641,8 @@ def account():
         if name:
             user.name = name[:120]
         user.phone = request.form.get('phone', '').strip()[:30] or None
-        user.notify_whatsapp = bool(request.form.get('notify_whatsapp'))
+        if user.vendor:
+            user.notify_whatsapp = bool(request.form.get('notify_whatsapp'))
         user.notify_email = bool(request.form.get('notify_email'))
         db.session.commit()
         flash('Saved.', 'success')
@@ -738,33 +741,77 @@ def send_email(to_email, to_name, subject, html):
         return False
 
 
-# ── Order alerts: WhatsApp + email ───────────────────────────
-# WhatsApp goes through Meta's official WhatsApp Business Platform (Cloud API).
-# It switches on by itself when these are in Render's Environment:
-#   WHATSAPP_TOKEN     (permanent access token from Meta)
-#   WHATSAPP_PHONE_ID  (the "Phone number ID" of Katale's WhatsApp number)
-# Messages use templates that Meta approves once (names below, language English).
+# ── Order alerts ─────────────────────────────────────────────
+# Like Glovo: free PUSH NOTIFICATIONS are the main alert (phone/computer pop-ups).
+#   Trader:   push for every new order. If nobody has opened it after 3 minutes,
+#             ONE WhatsApp message as a backup (the only WhatsApp Katale sends).
+#   Customer: push at each step + the live tracker on the order page.
+#             Email receipt when the order is delivered. No WhatsApp.
+
+# Push notification keys ("VAPID"). Katale makes its own pair the first time it
+# starts and saves them in the database, so there is nothing to set up in Render.
+_vapid = {}
+
+
+def vapid_keys():
+    if not _vapid:
+        priv = Setting.query.get('vapid_private')
+        pub = Setting.query.get('vapid_public')
+        if not (priv and pub):
+            from py_vapid import Vapid01
+            from cryptography.hazmat.primitives import serialization
+            import base64
+            v = Vapid01()
+            v.generate_keys()
+            priv_pem = v.private_pem().decode()
+            raw = v.public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+            pub_b64 = base64.urlsafe_b64encode(raw).decode().rstrip('=')
+            priv, pub = Setting(key='vapid_private', value=priv_pem), Setting(key='vapid_public', value=pub_b64)
+            db.session.add_all([priv, pub])
+            db.session.commit()
+        _vapid.update(private=priv.value, public=pub.value)
+    return _vapid
+
+
+def push_to_user(user_id, title, body, url='/', tag=None):
+    """Send a pop-up to every phone/computer this person turned notifications on for."""
+    from pywebpush import webpush, WebPushException
+    keys = vapid_keys()
+    payload = json.dumps({'title': title, 'body': body, 'url': url, 'tag': tag})
+    sent = 0
+    for sub_ in PushSubscription.query.filter_by(user_id=user_id).all():
+        try:
+            webpush(subscription_info={'endpoint': sub_.endpoint, 'keys': {'p256dh': sub_.p256dh, 'auth': sub_.auth}},
+                    data=payload, vapid_private_key=keys['private'],
+                    vapid_claims={'sub': f'mailto:{MAIL_SENDER or "support@katale.app"}'}, ttl=3600)
+            sent += 1
+        except WebPushException as ex:
+            if ex.response is not None and ex.response.status_code in (404, 410):
+                db.session.delete(sub_)          # that browser turned notifications off: forget it
+        except Exception:
+            app.logger.exception('Push failed')
+    db.session.commit()
+    return sent
+
+
+# WhatsApp (backup for traders only). Switches on when these are in Render:
+#   WHATSAPP_TOKEN, WHATSAPP_PHONE_ID   (from Meta's WhatsApp Business Platform)
+# Uses one Meta-approved template: katale_new_order
+#   {{1}} order ref, {{2}} customer name, {{3}} items, {{4}} total, {{5}} area + km, {{6}} link
 WHATSAPP_TOKEN = os.environ.get('WHATSAPP_TOKEN', '').strip()
 WHATSAPP_PHONE_ID = os.environ.get('WHATSAPP_PHONE_ID', '').strip()
 WHATSAPP_ON = bool(WHATSAPP_TOKEN and WHATSAPP_PHONE_ID)
-WA_TEMPLATES = {
-    # name in Meta                 what the {{1}}, {{2}}... in the template mean
-    'new_order':    'katale_new_order',      # 1 order ref, 2 customer name, 3 items, 4 total, 5 area + km, 6 link
-    'order_update': 'katale_order_update',   # 1 customer first name, 2 order ref, 3 shop name, 4 new status, 5 link
-}
+WHATSAPP_BACKUP_AFTER = 180   # seconds a new order can wait unseen before the WhatsApp backup goes out
 
 
-def send_whatsapp(phone, template_key, params):
-    """Send one WhatsApp template message. Returns True if Meta accepted it."""
+def send_whatsapp_new_order(phone, params):
     number = whatsapp_number(phone)
     if not (WHATSAPP_ON and number and len(number) >= 11):
         return False
-    body = {
-        'messaging_product': 'whatsapp', 'to': number, 'type': 'template',
-        'template': {'name': WA_TEMPLATES[template_key], 'language': {'code': 'en'},
-                     'components': [{'type': 'body', 'parameters': [
-                         {'type': 'text', 'text': str(p)[:900] or '-'} for p in params]}]},
-    }
+    body = {'messaging_product': 'whatsapp', 'to': number, 'type': 'template',
+            'template': {'name': 'katale_new_order', 'language': {'code': 'en'},
+                         'components': [{'type': 'body', 'parameters': [
+                             {'type': 'text', 'text': str(p)[:900] or '-'} for p in params]}]}}
     try:
         r = requests.post(f'https://graph.facebook.com/v21.0/{WHATSAPP_PHONE_ID}/messages', timeout=20,
                           headers={'Authorization': f'Bearer {WHATSAPP_TOKEN}'}, json=body)
@@ -776,9 +823,11 @@ def send_whatsapp(phone, template_key, params):
         return False
 
 
-def in_background(fn, *args):
+def in_background(fn, *args, delay=0):
     """Run a slow job (sending messages) without making the person wait."""
     def run():
+        if delay:
+            time.sleep(delay)
         with app.app_context():
             try:
                 fn(*args)
@@ -794,36 +843,79 @@ def items_summary(order, limit=4):
     return ', '.join(parts)
 
 
-def _alert_new_order(order_id, vendor_link):
+def _push_new_order(order_id, link):
     order = Order.query.get(order_id)
+    push_to_user(order.vendor.owner_id, f'New order {order.reference} - UGX {order.total:,.0f}',
+                 f'{order.customer.name}: {items_summary(order)}. Tap to accept.', link, tag=f'order-{order.id}')
+
+
+def _whatsapp_backup(order_id, link):
+    """3 minutes later: if the trader still hasn't opened the order, send ONE WhatsApp."""
+    order = Order.query.get(order_id)
+    if not order or order.status != 'placed' or order.seen_at:
+        return
     vendor, owner = order.vendor, order.vendor.owner
+    if not (owner.notify_whatsapp and vendor.phone):
+        return
     area = short_label(order.delivery_address) + (f' ({order.distance_km:.1f} km)' if order.distance_km else '')
-    total = f'UGX {order.total:,.0f}'
-    if owner.notify_whatsapp and vendor.phone:
-        send_whatsapp(vendor.phone, 'new_order',
-                      [order.reference, order.customer.name, items_summary(order), total, area, vendor_link])
-    if owner.notify_email:
-        send_email(owner.email, owner.name, f'New order {order.reference} - {total}',
-                   render_template('email_new_order.html', order=order, link=vendor_link))
+    send_whatsapp_new_order(vendor.phone, [order.reference, order.customer.name, items_summary(order),
+                                           f'UGX {order.total:,.0f}', area, link])
 
 
-def _alert_status(order_id, order_link):
+STATUS_PUSH = {
+    'accepted': ('Order accepted', '{shop} has accepted your order.'),
+    'preparing': ('Being prepared', '{shop} is getting your order ready.'),
+    'out_for_delivery': ('On the way 🛵', 'Your order from {shop} is on the way. Keep your phone near you.'),
+    'delivered': ('Delivered', 'Enjoy! Your receipt is in your email.'),
+    'cancelled': ('Order cancelled', '{shop} could not take your order. You have not been charged.'),
+}
+
+
+def _alert_status(order_id, link):
     order = Order.query.get(order_id)
-    customer = order.customer
-    if customer.notify_whatsapp and (order.phone or customer.phone):
-        send_whatsapp(order.phone or customer.phone, 'order_update',
-                      [customer.name.split()[0], order.reference, order.vendor.name, order.status_label, order_link])
-    if customer.notify_email:
-        send_email(customer.email, customer.name, f'{order.reference}: {order.status_label}',
-                   render_template('email_order_update.html', order=order, link=order_link))
+    title, body = STATUS_PUSH.get(order.status, (order.status_label, ''))
+    push_to_user(order.customer_id, f'{title} - {order.reference}', body.format(shop=order.vendor.name), link,
+                 tag=f'order-{order.id}')
+    if order.status == 'delivered' and order.customer.notify_email:
+        send_email(order.customer.email, order.customer.name, f'Your receipt for {order.reference}',
+                   render_template('email_order_receipt.html', order=order, link=link))
 
 
 def alert_new_order(order):
-    in_background(_alert_new_order, order.id, url_for('vendor_dashboard', _external=True))
+    link = url_for('vendor_dashboard', _external=True)
+    in_background(_push_new_order, order.id, link)
+    in_background(_whatsapp_backup, order.id, link, delay=WHATSAPP_BACKUP_AFTER)
 
 
 def alert_status(order):
     in_background(_alert_status, order.id, url_for('order_detail', order_id=order.id, _external=True))
+
+
+@app.route('/push/key')
+def push_key():
+    return {'key': vapid_keys()['public']}
+
+
+@app.route('/push/subscribe', methods=['POST'])
+@login_required
+def push_subscribe():
+    data = request.get_json(silent=True) or {}
+    keys = data.get('keys') or {}
+    if not (data.get('endpoint') and keys.get('p256dh') and keys.get('auth')):
+        return {'ok': False}, 400
+    sub_ = PushSubscription.query.filter_by(endpoint=data['endpoint']).first() or PushSubscription(endpoint=data['endpoint'])
+    sub_.user_id, sub_.p256dh, sub_.auth = get_current_user().id, keys['p256dh'], keys['auth']
+    db.session.add(sub_)
+    db.session.commit()
+    return {'ok': True}
+
+
+@app.route('/push/test', methods=['POST'])
+@login_required
+def push_test():
+    n = push_to_user(get_current_user().id, 'Katale notifications are on ✅',
+                     'You will get a pop-up like this for your orders.', url_for('home'))
+    return {'sent': n}
 
 
 @app.route('/forgot-password', methods=['GET', 'POST'])
@@ -1010,6 +1102,9 @@ def order_detail(order_id):
     allowed = (order.customer_id == user.id or order.vendor.owner_id == user.id or user.is_admin)
     if not allowed:
         abort(404)
+    if order.vendor.owner_id == user.id and not order.seen_at:
+        order.seen_at = datetime.utcnow()
+        db.session.commit()
     return render_template('order_detail.html', order=order)
 
 
@@ -1036,6 +1131,8 @@ def cancel_order(order_id):
     else:
         order.status = 'cancelled'
         db.session.commit()
+        in_background(push_to_user, order.vendor.owner_id, f'{order.reference} was cancelled',
+                      f'{user.name} cancelled their order.', url_for('vendor_dashboard', _external=True))
         flash('Your order has been cancelled.', 'success')
     return redirect(url_for('order_detail', order_id=order.id))
 
@@ -1128,6 +1225,11 @@ def vendor_settings():
 def vendor_dashboard():
     vendor = get_current_user().vendor
     orders = Order.query.filter_by(vendor_id=vendor.id).order_by(Order.date_placed.desc()).all()
+    unseen = [o for o in orders if o.status == 'placed' and not o.seen_at]
+    for o in unseen:
+        o.seen_at = datetime.utcnow()       # trader has seen it: no WhatsApp backup needed
+    if unseen:
+        db.session.commit()
     active = [o for o in orders if o.status not in ('delivered', 'cancelled')]
     past = [o for o in orders if o.status in ('delivered', 'cancelled')][:10]
     return render_template('vendor_dashboard.html', vendor=vendor, active=active, past=past,

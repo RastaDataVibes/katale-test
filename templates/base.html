@@ -10,13 +10,14 @@
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
   <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Katale">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://res.cloudinary.com">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4">
   {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -157,6 +158,45 @@
   document.getElementById('install-btn').addEventListener('click', function () {
     if (!installEvt) return;
     installEvt.prompt(); installEvt.userChoice.finally(function () { installEvt = null; document.getElementById('install-btn').hidden = true; });
+  });
+
+  // ── Notifications ("Turn on notifications" buttons) ──
+  window.katalePush = {
+    supported: 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window,
+    state: function () { return this.supported ? Notification.permission : 'unsupported'; },
+    turnOn: async function () {
+      if (!this.supported) {
+        alert(/iPhone|iPad/.test(navigator.userAgent)
+          ? 'On iPhone: first tap Share, then "Add to Home Screen", open Katale from the home screen and turn on notifications there.'
+          : 'This browser cannot show notifications. Try Chrome.');
+        return false;
+      }
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { alert('Notifications are blocked. Allow them for this site in your browser settings (the icon next to the web address).'); return false; }
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      const key = (await (await fetch('/push/key')).json()).key;
+      const pad = '='.repeat((4 - key.length % 4) % 4), raw = atob((key + pad).replace(/-/g, '+').replace(/_/g, '/'));
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) });
+      const token = document.querySelector('meta[name=csrf-token]').content;
+      await fetch('/push/subscribe', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token }, body: JSON.stringify(sub) });
+      await fetch('/push/test', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': token } });
+      return true;
+    }
+  };
+  document.querySelectorAll('[data-push-btn]').forEach(function (b) {
+    function show() {
+      var s = window.katalePush.state();
+      if (s === 'granted') { b.innerHTML = '🔔 Notifications on'; b.classList.add('on'); }
+    }
+    show();
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      window.katalePush.turnOn().then(function () { show(); }).catch(function () {
+        alert('Could not turn on notifications. Please try again.');
+      }).finally(function () { b.disabled = false; });
+    });
   });
 
   // Close the account menu when you tap anywhere else

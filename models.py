@@ -173,6 +173,7 @@ class Order(db.Model):
 
     status = db.Column(db.String(20), default='placed', nullable=False)
     date_placed = db.Column(db.DateTime, default=datetime.utcnow)
+    seen_at = db.Column(db.DateTime, nullable=True)   # when the trader first saw it (stops the WhatsApp backup)
 
     customer = db.relationship('User', backref='orders')
     vendor = db.relationship('Vendor', backref='orders')
@@ -226,3 +227,21 @@ class Payment(db.Model):
     note = db.Column(db.String(200), nullable=True)                      # e.g. "Free days given by admin"
 
     vendor = db.relationship('Vendor', backref=db.backref('payments', order_by='Payment.created_at.desc()'))
+
+
+class Setting(db.Model):
+    """Small saved values the app makes for itself (e.g. its push notification keys)."""
+    __tablename__ = 'settings'
+    key = db.Column(db.String(60), primary_key=True)
+    value = db.Column(db.Text, nullable=False)
+
+
+class PushSubscription(db.Model):
+    """One phone or computer that agreed to receive Katale notifications."""
+    __tablename__ = 'push_subscriptions'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    endpoint = db.Column(db.Text, unique=True, nullable=False)
+    p256dh = db.Column(db.String(200), nullable=False)
+    auth = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

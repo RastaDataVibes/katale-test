@@ -7,3 +7,4 @@ Authlib
 requests
 cloudinary
 Flask-WTF
+pywebpush

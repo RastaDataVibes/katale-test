@@ -45,6 +45,12 @@
         {% endfor %}
       {% endif %}
     </div>
+    {% if current_user.id == order.customer_id and order.status not in ('delivered', 'cancelled') %}
+      <div class="push-nudge">
+        <span>{{ icon('phone', 18) }} Get a pop-up on your phone when your order moves, even with Katale closed.</span>
+        <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn>🔔 Turn on notifications</button>
+      </div>
+    {% endif %}
     <p style="margin:18px 0 24px">
       <span class="tag">{{ payment_methods.get(order.payment_method, order.payment_method) }} &middot; {{ order.payment_status }}</span>
     </p>

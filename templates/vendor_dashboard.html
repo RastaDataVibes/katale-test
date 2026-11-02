@@ -76,7 +76,10 @@
 
     <div class="orders-head">
       <h2 style="margin:0">Active orders</h2>
-      <button type="button" class="btn btn-outline btn-small" id="sound-btn">{{ icon('info', 16) }} Turn on sound alerts</button>
+      <div class="actions" style="margin:0">
+        <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn>🔔 Turn on order notifications</button>
+        <button type="button" class="btn btn-outline btn-small" id="sound-btn">Turn on sound alerts</button>
+      </div>
     </div>
     <div class="new-order-bar" id="new-order-bar" hidden>{{ icon('orders', 20) }} <span>New order! Loading…</span></div>
     {% for o in active %}
