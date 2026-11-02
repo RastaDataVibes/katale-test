@@ -58,7 +58,8 @@ BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '').strip()
 MAIL_SENDER = os.environ.get('MAIL_SENDER', '').strip()          # e.g. katale@outlook.com (verified in Brevo)
 
 SITE_NAME = 'Katale'
-ADMIN_EMAIL = (os.environ.get('ADMIN_EMAIL') or '').strip().lower()
+# One or more admin emails, separated by commas: e.g. "me@gmail.com, partner@gmail.com"
+ADMIN_EMAILS = {e.strip().lower() for e in (os.environ.get('ADMIN_EMAIL') or '').split(',') if e.strip()}
 DELIVERY_FEE = 5000  # UGX, only used for shops that have not pinned their location yet
 KAMPALA = (0.3476, 32.5825)  # where maps start if we know nothing else
 TRADER_MONTHLY_FEE = 30000  # UGX for 30 days
@@ -221,6 +222,10 @@ def get_current_user():
     if 'user' not in g:
         uid = session.get('user_id')
         g.user = User.query.get(uid) if uid else None
+        # Anyone whose email is in ADMIN_EMAIL becomes admin, even if they signed up before it was set
+        if g.user and g.user.email in ADMIN_EMAILS and g.user.role != 'admin':
+            g.user.role = 'admin'
+            db.session.commit()
     return g.user
 
 
@@ -474,7 +479,7 @@ def log_in(user, message=None):
 
 
 def role_for(email):
-    return 'admin' if ADMIN_EMAIL and email == ADMIN_EMAIL else 'customer'
+    return 'admin' if email in ADMIN_EMAILS else 'customer'
 
 
 @app.route('/register', methods=['GET', 'POST'])
