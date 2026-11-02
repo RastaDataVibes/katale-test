@@ -8,21 +8,16 @@
 (function () {
   var pollUrl = "{{ url_for('vendor_poll') }}", seenUrl = "{{ url_for('vendor_dashboard', seen='all') }}";
   var bar = document.getElementById('new-order-bar'), barText = bar.querySelector('span');
-  var btn = document.getElementById('sound-btn'), ctx = null, ringTimer = null, soundOn = false;
+  var btn = document.getElementById('sound-btn'), ringTimer = null, soundOn = false;
+  var bell = new Audio("{{ url_for('static', filename='sounds/order-bell.mp3') }}");
+  bell.preload = 'auto';
   var ICON_ON = btn.dataset.iconOn, ICON_OFF = btn.dataset.iconOff;
   try { soundOn = localStorage.getItem('katale_sound') === '1'; } catch (e) {}
 
   function label() { btn.innerHTML = (soundOn ? ICON_ON + ' Sound on' : ICON_OFF + ' Turn on sound'); btn.classList.toggle('on', soundOn); }
-  function audio() { try { ctx = ctx || new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); } catch (e) {} return ctx; }
-  function ringOnce() {
-    var c = audio(); if (!c) return;
-    [0, 0.18, 0.36, 0.9, 1.08, 1.26].forEach(function (t) {
-      var o = c.createOscillator(), g = c.createGain();
-      o.type = 'square'; o.frequency.value = (t < 0.8 ? 1046 : 880); o.connect(g); g.connect(c.destination);
-      g.gain.setValueAtTime(0.18, c.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + 0.15);
-      o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.16);
-    });
-  }
+  function ringOnce() { try { bell.currentTime = 0; var p = bell.play(); if (p) p.catch(function () {}); } catch (e) {} }
+  // Browsers only allow sound after the first tap on the page: "unlock" the bell on that tap
+  function unlock() { bell.muted = true; var p = bell.play(); if (p) p.then(function () { bell.pause(); bell.currentTime = 0; bell.muted = false; }).catch(function () { bell.muted = false; }); }
   function startRinging(n) {
     bar.hidden = false;
     barText.textContent = n === 1 ? '1 new order waiting' : n + ' new orders waiting';
@@ -38,7 +33,7 @@
     label(); if (soundOn) { ringOnce(); } else { stopRinging(); }
   });
   // Browsers only allow sound after the first tap on the page
-  document.addEventListener('click', function () { if (soundOn) audio(); }, { once: true });
+  document.addEventListener('click', function () { if (soundOn && !ringTimer) unlock(); }, { once: true });
   bar.addEventListener('click', function () { stopRinging(); location.href = seenUrl; });
 
   function check() {
@@ -48,6 +43,14 @@
   }
   check();
   setInterval(check, 15000);
+
+  // Guide: open until notifications are on; tick steps that are done
+  var guide = document.getElementById('alert-guide');
+  var pushOn = window.Notification && Notification.permission === 'granted';
+  var installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (pushOn) document.getElementById('g-push').classList.add('done');
+  if (installed) document.getElementById('g-install').classList.add('done');
+  guide.open = !pushOn;
 })();
 </script>
 {% endblock %}
@@ -83,6 +86,34 @@
     {% else %}
       <p class="muted" style="margin-top:14px">{{ icon('bike', 15) }} You deliver up to {{ '%g'|format(vendor.delivery_radius_km) }} km · {{ vendor.delivery_base_fee|ugx }} + {{ vendor.delivery_per_km|ugx }} per km</p>
     {% endif %}
+
+    <details class="card alert-guide" id="alert-guide">
+      <summary>{{ icon('bell', 20) }} <strong>Never miss an order</strong> <span class="muted">3 quick steps</span> {{ icon('chevron-right', 18) }}</summary>
+      <ol class="guide-steps">
+        <li id="g-push">
+          <span class="g-no">1</span>
+          <div><strong>Turn on order notifications</strong>
+            <p class="muted">A pop-up with your phone's sound for every new order, even when Katale is closed. It rings again after 1 and 2 minutes until you tap it.</p>
+            <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-on-html="{{ (icon('check', 16) ~ ' Notifications on')|e }}">{{ icon('bell', 16) }} Turn on</button>
+          </div>
+        </li>
+        <li id="g-install">
+          <span class="g-no">2</span>
+          <div><strong>Install Katale on your phone</strong>
+            <p class="muted"><b>Android (Chrome):</b> tap the <b>⋮</b> menu at the top right, then <b>Install app</b> or <b>Add to Home screen</b>.<br>
+            <b>iPhone (Safari):</b> tap <b>Share</b>, then <b>Add to Home Screen</b>. On iPhone, notifications only work from the installed app.</p>
+          </div>
+        </li>
+        <li>
+          <span class="g-no">3</span>
+          <div><strong>Give Katale a loud sound of its own</strong>
+            <p class="muted"><b>Android:</b> Settings → Apps → <b>Katale</b> → Notifications → Sound → pick a loud tone (an alarm tone works well).<br>
+            <b>iPhone:</b> Settings → Notifications → <b>Katale</b> → turn on Sounds.<br>
+            <b>At the counter:</b> keep this page open with <b>Turn on sound</b> pressed. New orders ring until someone taps them.</p>
+          </div>
+        </li>
+      </ol>
+    </details>
 
     <div class="orders-head">
       <h2 style="margin:0">Active orders</h2>

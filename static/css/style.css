@@ -462,3 +462,18 @@ a.order-row:hover{box-shadow:var(--shadow);}
 @keyframes wiggle{0%,100%{transform:rotate(0)} 25%{transform:rotate(-14deg)} 75%{transform:rotate(14deg)}}
 #sound-btn.on{background:var(--green-tint); border-color:var(--green-light); color:var(--green-dark);}
 .push-btn .ico,#sound-btn .ico{margin-right:2px;}
+
+/* "Never miss an order" guide */
+.alert-guide{padding:0; margin-top:22px; overflow:hidden;}
+.alert-guide summary{list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; padding:16px 20px; color:var(--green-dark);}
+.alert-guide summary::-webkit-details-marker{display:none;}
+.alert-guide summary .muted{margin-left:auto;}
+.alert-guide summary > .ico:last-child{transition:transform .2s;}
+.alert-guide[open] summary > .ico:last-child{transform:rotate(90deg);}
+.guide-steps{list-style:none; padding:0 20px 18px; display:grid; gap:14px;}
+.guide-steps li{display:flex; gap:14px; align-items:flex-start; border-top:1px solid var(--line); padding-top:14px;}
+.guide-steps p{font-size:14px; margin:4px 0 8px;}
+.g-no{width:30px; height:30px; border-radius:50%; background:var(--green-tint); color:var(--green-dark); font:700 14px var(--head); display:grid; place-items:center; flex-shrink:0;}
+.guide-steps li.done .g-no{background:var(--green-mid); color:#fff; font-size:0;}
+.guide-steps li.done .g-no::after{content:'✓'; font-size:15px;}
+.guide-steps li.done strong{text-decoration:line-through; color:var(--muted);}
