@@ -673,3 +673,6 @@ h4{font:700 15px var(--head); color:var(--green-dark); margin-bottom:6px;}
 .star-pick label:active svg{transform:scale(.9);}
 .star-pick input:focus-visible + label svg{outline:2px solid var(--green-mid); outline-offset:2px; border-radius:4px;}
 @media (max-width:720px){ .review-summary{grid-template-columns:1fr;} }
+
+.example-bar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--gold-tint); border:1px solid #f0d9a4; color:#6b4a00; border-radius:var(--radius-sm); padding:12px 16px; margin-bottom:16px;}
+.example-bar span{flex:1; min-width:220px;}

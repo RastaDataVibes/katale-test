@@ -1501,6 +1501,37 @@ def area_of(address):
     return parts[1] if len(parts) > 1 and 'road' in parts[0].lower() else parts[0]
 
 
+def example_insights(vendor):
+    """Made-up numbers so a new trader can see what Insights will show. Always labelled "Example"."""
+    import random
+    rnd = random.Random(7)
+    start = kampala_day_start(29)
+    days = []
+    for i in range(30):
+        d = start + timedelta(days=i)
+        n = rnd.choice([0, 1, 1, 2, 2, 3, 4, 5]) + (2 if (d + timedelta(hours=3)).weekday() >= 4 else 0)
+        days.append({'label': (d + timedelta(hours=3)).strftime('%d %b'), 'orders': n, 'sales': n * rnd.choice([38000, 45000, 52000, 61000])})
+    sales = sum(d['sales'] for d in days)
+    orders = sum(d['orders'] for d in days)
+    kpis = [('Sales', sales, 18, 'ugx', True), ('Orders', orders, 12, 'num', True),
+            ('Average order', sales / orders, 5, 'ugx', True), ('Customers', 41, 9, 'num', True),
+            ('Delivery fees earned', orders * 3500, 10, 'ugx', True), ('Cancelled', 4, None, 'pct', False),
+            ('Time to accept', 6, None, 'mins', False)]
+    names = ['Whole chicken', 'Drumsticks', 'Eggs (tray)', 'Chicken wings', 'Gizzards', 'Chicken breast']
+    top_products = [{'name': n, 'qty': q, 'money': m} for n, q, m in
+                    zip(names, [58, 44, 39, 30, 27, 15], [1624000, 792000, 468000, 450000, 270000, 330000])]
+    top_products.sort(key=lambda p: p['money'], reverse=True)
+    grid = [[rnd.choice([0, 1, 1, 2, 3]) + (4 if b in (3, 4) and d >= 4 else 0) for b in range(6)] for d in range(7)]
+    return dict(kpis=kpis, days=days, top_products=top_products, unsold=['Chicken feet'],
+                top_areas=[('Ntinda', 34), ('Kisaasi', 21), ('Naguru', 15), ('Kyanja', 12), ('Bukoto', 9), ('Kiwatule', 6)],
+                area_total=97, pins=[], avg_km=3.2, grid=grid, grid_max=max(max(r) for r in grid),
+                blocks=['Morning', 'Midday', 'Afternoon', 'Evening', 'Night', 'Late'], day_names=DAY_NAMES,
+                busiest='Sat evening', new_customers=26, returning=15,
+                top_customers=[{'name': 'Sarah N.', 'orders': 9, 'money': 412000}, {'name': 'John K.', 'orders': 7, 'money': 365000},
+                               {'name': 'Grace A.', 'orders': 6, 'money': 290000}, {'name': 'Peter O.', 'orders': 5, 'money': 238000}],
+                payments=[('Cash on delivery', 1640000), ('Mobile money on delivery', 1210000), ('MoMoPay / Airtel Pay', 760000), ('Mobile money (paid now)', 324000)])
+
+
 @app.route('/vendor/insights')
 @vendor_required
 def vendor_insights():
@@ -1508,6 +1539,9 @@ def vendor_insights():
     key = request.args.get('period', '30')
     if key not in PERIODS:
         key = '30'
+    if request.args.get('example'):
+        return render_template('seller/insights.html', vendor=vendor, key='30', periods=PERIODS, example=True,
+                               **example_insights(vendor))
     start, end, prev_start = period_range(key)
 
     def orders_between(a, b):

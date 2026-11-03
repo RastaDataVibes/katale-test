@@ -20,9 +20,13 @@
 <div class="seller-head">
   <div><h1>Insights</h1><p class="muted">How {{ vendor.name }} is doing: {{ periods[key]|lower }}.</p></div>
 </div>
+{% if example %}
+  <div class="example-bar">{{ icon('info', 20) }} <span><strong>Example only.</strong> These are made-up numbers to show what Insights looks like. Your real numbers appear here once customers order from you.</span>
+    <a class="btn btn-small btn-dark" href="{{ url_for('vendor_insights') }}">Back to my real numbers</a></div>
+{% endif %}
 
 {# Filters: one row above the charts #}
-<div class="tab-row" style="margin-bottom:16px">
+<div class="tab-row" style="margin-bottom:16px" {{ 'hidden' if example }}>
   {% for k, label in periods.items() %}
     <a class="chip {{ 'active' if k == key }}" href="{{ url_for('vendor_insights', period=k) }}">{{ label }}</a>
   {% endfor %}
@@ -47,7 +51,11 @@
 {% if not kpis[1][1] %}
   <div class="empty"><span class="empty-ico">{{ icon('grid', 28) }}</span>
     <p>No orders in this period yet. Your insights fill in as orders come in.</p>
-    {% if key != '90' %}<a class="btn btn-light" href="{{ url_for('vendor_insights', period='90') }}">Look at the last 90 days</a>{% endif %}
+    <div class="actions" style="justify-content:center">
+      <a class="btn" href="{{ url_for('vendor_insights', example=1) }}">See an example</a>
+      {% if key != '90' %}<a class="btn btn-light" href="{{ url_for('vendor_insights', period='90') }}">Look at the last 90 days</a>{% endif %}
+    </div>
+    <p class="muted small">Once you have orders, you'll see: sales per day, what sells most, how customers paid, where your customers are, when they order, and new vs returning customers.</p>
   </div>
 {% else %}
 
