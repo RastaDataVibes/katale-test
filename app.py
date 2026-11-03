@@ -1703,6 +1703,32 @@ def vendor_poll():
     return {'unseen': unseen}
 
 
+def read_product_form(product):
+    """Copy the product form onto a product. Returns an error message or None."""
+    name = request.form.get('name', '').strip()
+    try:
+        price = float(request.form.get('price', ''))
+    except ValueError:
+        price = -1
+    if not name or price < 0:
+        return 'Please give the product a name and a valid price.'
+    product.name = name[:150]
+    product.price = price
+    product.unit = request.form.get('unit', '').strip()[:40]
+    product.description = request.form.get('description', '').strip()
+    try:
+        new_url = upload_image(request.files.get('photo'), 'products')
+    except UploadError as e:
+        return str(e)
+    if new_url:
+        delete_image(product.image_url)
+        product.image_url = new_url
+    elif request.form.get('remove_photo'):
+        delete_image(product.image_url)
+        product.image_url = None
+    return None
+
+
 @app.route('/vendor/products/add', methods=['POST'])
 @vendor_required
 def vendor_add_product():
