@@ -1,0 +1,33 @@
+{# One order, as the trader sees it. Needs: o (order), next_statuses #}
+{% from "_icons.html" import icon %}
+<div class="order-card {{ 'is-new' if o.status == 'placed' and not o.seen_at }} st-{{ o.status }}">
+  <div class="order-head">
+    <div>
+      <a href="{{ url_for('order_detail', order_id=o.id) }}"><strong>{{ o.reference }}</strong></a> &middot; {{ o.customer.name }}
+      <div class="muted small">{{ o.date_placed|local('%d %b, %H:%M') }}{% if o.distance_km %} &middot; {{ '%.1f'|format(o.distance_km) }} km{% endif %}</div>
+    </div>
+    <span class="tag {{ 'off' if o.status == 'cancelled' else ('' if o.status == 'delivered' else 'warn') }}">{{ o.status_label }}</span>
+  </div>
+  <p class="items">{% for i in o.items %}{{ i.quantity }} &times; {{ i.name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  <p class="money"><strong>{{ o.total|ugx }}</strong> <span class="muted">(items {{ o.subtotal|ugx }} + delivery {{ o.delivery_fee|ugx }}{% if o.momo_charge and o.momo_charge > 0 %} + charges {{ o.momo_charge|ugx }}{% endif %})</span></p>
+  {% include "_pay_confirm.html" %}
+  {% if o.status not in ('delivered', 'cancelled') %}
+    <p class="muted small">{{ icon('pin', 15) }} {{ o.delivery_address }}</p>
+    {% if o.delivery_landmark %}<p class="muted small">Landmark: {{ o.delivery_landmark }}</p>{% endif %}
+    {% if o.notes %}<p class="muted small">Note: {{ o.notes }}</p>{% endif %}
+    <div class="contact-row">
+      {% if o.maps_link %}<a class="btn btn-dark btn-small" href="{{ o.maps_link }}" target="_blank" rel="noopener">{{ icon('pin', 16) }} Google Maps</a>{% endif %}
+      <a class="btn btn-light btn-small" href="https://wa.me/{{ whatsapp_number(o.phone) }}" target="_blank" rel="noopener">{{ icon('whatsapp', 16) }} WhatsApp</a>
+      <a class="btn btn-light btn-small" href="tel:{{ o.phone }}">{{ icon('phone', 16) }} {{ o.phone }}</a>
+    </div>
+    <div class="actions">
+      {% for s in next_statuses.get(o.status, []) %}
+        <form action="{{ url_for('vendor_order_status', order_id=o.id) }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="status" value="{{ s }}">
+          <button class="btn btn-small {% if s == 'cancelled' %}btn-danger{% endif %}" type="submit">{{ status_labels[s] }}</button>
+        </form>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

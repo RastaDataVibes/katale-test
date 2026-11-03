@@ -1,11 +1,11 @@
-{% extends "base.html" %}
+{% extends "seller/base.html" %}
 {% from "_icons.html" import icon %}
 {% block title %}Edit {{ product.name }} | {{ site_name }}{% endblock %}
-{% block content %}
-<div class="wrap">
-  <form class="card form-card wide" method="POST" enctype="multipart/form-data">
+{% block seller %}
+<div class="seller-page">
+  <form class="card form-card wide seller-form" method="POST" enctype="multipart/form-data">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <a class="text-link" href="{{ url_for('vendor_dashboard') }}#products">&larr; Back to my shop</a>
+    <a class="text-link" href="{{ url_for('vendor_products') }}">&larr; Back to products</a>
     <h1 style="margin-top:10px">Edit product</h1>
     {% set p = product %}
     {% include "_product_fields.html" %}

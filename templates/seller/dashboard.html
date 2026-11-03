@@ -1,0 +1,72 @@
+{% extends "seller/base.html" %}
+{% block title %}Dashboard | Seller center{% endblock %}
+{% block seller %}
+<div class="seller-head">
+  <div>
+    <h1>Hello{% if current_user.name %}, {{ current_user.name.split()[0] }}{% endif %}</h1>
+    <p class="muted">Here's how {{ vendor.name }} is doing today.</p>
+  </div>
+  <form action="{{ url_for('vendor_toggle_open') }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn {{ 'btn-outline' if vendor.is_open else '' }}" type="submit">{{ icon('store-open', 18) }} {{ 'Close shop' if vendor.is_open else 'Open shop' }}</button>
+  </form>
+</div>
+
+{# Status banners #}
+{% if not vendor.is_approved %}
+  <div class="loc-nudge warn">{{ icon('clock', 20) }} <span><strong>Waiting for approval.</strong> You can add products now. Your free month starts when we approve your shop.</span></div>
+{% elif not vendor.subscription_active %}
+  <a class="loc-nudge warn" href="{{ url_for('vendor_subscription') }}">{{ icon('info', 20) }} <span><strong>Your shop is hidden from customers.</strong> Pay {{ trader_fee|ugx }} to bring it back. Your products and orders are safe.</span> {{ icon('chevron-right', 18) }}</a>
+{% elif vendor.days_left <= 7 %}
+  <a class="loc-nudge warn" href="{{ url_for('vendor_subscription') }}">{{ icon('clock', 20) }} <span><strong>{{ vendor.days_left }} day{{ '' if vendor.days_left == 1 else 's' }} left</strong> {{ 'of your free month' if vendor.on_trial else 'on your subscription' }}. Pay {{ trader_fee|ugx }} to keep your shop visible.</span> {{ icon('chevron-right', 18) }}</a>
+{% endif %}
+{% if not vendor.has_location %}
+  <a class="loc-nudge warn" href="{{ url_for('vendor_settings') }}">{{ icon('pin', 20) }} <span><strong>Put your shop on the map.</strong> Until you do, customers can't see how far you are.</span> {{ icon('chevron-right', 18) }}</a>
+{% endif %}
+{% if not vendor.products %}
+  <a class="loc-nudge" href="{{ url_for('vendor_products') }}#add-product">{{ icon('basket', 20) }} <span><strong>Add your first product</strong> so customers have something to order.</span> {{ icon('chevron-right', 18) }}</a>
+{% endif %}
+
+{# Today at a glance #}
+<div class="kpis">
+  <div class="kpi {{ 'hot' if snapshot.waiting }}"><span>Waiting to accept</span><strong>{{ snapshot.waiting }}</strong></div>
+  <div class="kpi"><span>In progress</span><strong>{{ snapshot.in_progress }}</strong></div>
+  <div class="kpi"><span>Orders today</span><strong>{{ snapshot.orders_today }}</strong></div>
+  <div class="kpi"><span>Sales today</span><strong>{{ snapshot.sales_today|ugx }}</strong></div>
+</div>
+
+{% include "seller/_alert_guide.html" %}
+
+<div class="orders-head">
+  <h2 style="margin:0">Active orders</h2>
+  <div class="actions" style="margin:0">
+    <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-off-label="Turn on order notifications">{{ icon('bell', 16) }} Turn on order notifications</button>
+    <button type="button" class="btn btn-outline btn-small" id="sound-btn"
+            data-icon-on="{{ icon('sound', 16)|forceescape }}" data-icon-off="{{ icon('bell-off', 16)|forceescape }}">Turn on sound</button>
+  </div>
+</div>
+{% for o in active %}
+  {% include "seller/_order_card.html" %}
+{% else %}
+  <div class="empty"><span class="empty-ico">{{ icon('orders', 28) }}</span><p>No active orders right now. New ones show up here and ring.</p></div>
+{% endfor %}
+<p style="margin-top:14px"><a class="text-link" href="{{ url_for('vendor_orders', tab='done') }}">See completed orders {{ icon('arrow-right', 15) }}</a></p>
+{% endblock %}
+
+{% block seller_scripts %}
+<script>
+(function () {
+  var btn = document.getElementById('sound-btn');
+  function label() { var on = window.kataleSound.on(); btn.innerHTML = on ? btn.dataset.iconOn + ' Sound on' : btn.dataset.iconOff + ' Turn on sound'; btn.classList.toggle('on', on); }
+  label();
+  btn.addEventListener('click', function () { window.kataleSound.set(!window.kataleSound.on()); label(); });
+  // Guide: open until notifications are on; tick finished steps
+  var guide = document.getElementById('alert-guide');
+  var pushOn = window.Notification && Notification.permission === 'granted';
+  var installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (pushOn) document.getElementById('g-push').classList.add('done');
+  if (installed) document.getElementById('g-install').classList.add('done');
+  guide.open = !pushOn;
+})();
+</script>
+{% endblock %}

@@ -244,6 +244,9 @@ class Order(db.Model):
     status = db.Column(db.String(20), default='placed', nullable=False)
     date_placed = db.Column(db.DateTime, default=datetime.utcnow)
     seen_at = db.Column(db.DateTime, nullable=True)   # when the trader first saw it (stops the WhatsApp backup)
+    accepted_at = db.Column(db.DateTime, nullable=True)    # step times, used by Insights
+    delivered_at = db.Column(db.DateTime, nullable=True)
+    cancelled_at = db.Column(db.DateTime, nullable=True)
 
     customer = db.relationship('User', backref='orders')
     vendor = db.relationship('Vendor', backref='orders')

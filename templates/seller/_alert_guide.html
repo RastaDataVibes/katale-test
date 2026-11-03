@@ -1,0 +1,28 @@
+{% from "_icons.html" import icon %}
+    <details class="card alert-guide" id="alert-guide">
+  <summary>{{ icon('bell', 20) }} <strong>Never miss an order</strong> <span class="muted">3 quick steps</span> {{ icon('chevron-right', 18) }}</summary>
+  <ol class="guide-steps">
+    <li id="g-push">
+      <span class="g-no">1</span>
+      <div><strong>Turn on order notifications</strong>
+        <p class="muted">A pop-up with your phone's sound for every new order, even when Katale is closed. It rings again after 1 and 2 minutes until you tap it.</p>
+        <button type="button" class="btn btn-small btn-dark push-btn" data-push-btn data-off-label="Turn on">{{ icon('bell', 16) }} Turn on</button>
+      </div>
+    </li>
+    <li id="g-install">
+      <span class="g-no">2</span>
+      <div><strong>Install Katale on your phone</strong>
+        <p class="muted"><b>Android (Chrome):</b> tap the <b>⋮</b> menu at the top right, then <b>Install app</b> or <b>Add to Home screen</b>.<br>
+        <b>iPhone (Safari):</b> tap <b>Share</b>, then <b>Add to Home Screen</b>. On iPhone, notifications only work from the installed app.</p>
+      </div>
+    </li>
+    <li>
+      <span class="g-no">3</span>
+      <div><strong>Give Katale a loud sound of its own</strong>
+        <p class="muted"><b>Android:</b> Settings → Apps → <b>Katale</b> → Notifications → Sound → pick a loud tone (an alarm tone works well).<br>
+        <b>iPhone:</b> Settings → Notifications → <b>Katale</b> → turn on Sounds.<br>
+        <b>At the counter:</b> keep this page open with <b>Turn on sound</b> pressed. New orders ring until someone taps them.</p>
+      </div>
+    </li>
+  </ol>
+</details>

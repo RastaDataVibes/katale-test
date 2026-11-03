@@ -1,11 +1,9 @@
-{% extends "base.html" %}
+{% extends "seller/base.html" %}
 {% from "_icons.html" import icon %}
 {% block title %}Subscription | {{ site_name }}{% endblock %}
-{% block content %}
-<section>
-  <div class="wrap narrow">
-    <a class="text-link" href="{{ url_for('vendor_dashboard') }}">&larr; Back to my shop</a>
-    <h1 style="margin-top:10px">Subscription</h1>
+{% block seller %}
+<div class="seller-page">
+        <h1 style="margin-top:10px">Subscription</h1>
 
     <div class="card sub-card {{ 'ok' if vendor.subscription_active else 'off' }}">
       {% if not vendor.is_approved %}
@@ -73,5 +71,4 @@
       </div>
     {% endif %}
   </div>
-</section>
 {% endblock %}

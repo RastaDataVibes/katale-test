@@ -229,6 +229,9 @@ NEW_COLUMNS = [
     ('vendors', 'momo_charge_percent', 'FLOAT'),
     ('vendors', 'momo_charge_min', 'INTEGER'),
     ('orders', 'momo_charge', 'NUMERIC(10, 2) NOT NULL DEFAULT 0'),
+    ('orders', 'accepted_at', 'TIMESTAMP'),
+    ('orders', 'delivered_at', 'TIMESTAMP'),
+    ('orders', 'cancelled_at', 'TIMESTAMP'),
 ]
 
 
@@ -1224,6 +1227,7 @@ def cancel_order(order_id):
         flash('This order has already been accepted, so it cannot be cancelled here. Please call the shop.', 'error')
     else:
         order.status = 'cancelled'
+        order.cancelled_at = datetime.utcnow()
         db.session.commit()
         in_background(push_to_user, order.vendor.owner_id, f'{order.reference} was cancelled',
                       f'{user.name} cancelled their order.', url_for('vendor_dashboard', _external=True))
@@ -1350,49 +1354,78 @@ def vendor_settings():
     return render_template('vendor_settings.html', vendor=vendor)
 
 
+def kampala_day_start(days_ago=0):
+    """Midnight in Kampala (as a UTC time), so "today" means the trader's today."""
+    now_local = datetime.utcnow() + timedelta(hours=3)
+    start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_ago)
+    return start_local - timedelta(hours=3)
+
+
 @app.route('/vendor')
 @vendor_required
 def vendor_dashboard():
     vendor = get_current_user().vendor
-    orders = Order.query.filter_by(vendor_id=vendor.id).order_by(Order.date_placed.desc()).all()
     # An order only counts as "seen" when someone actually taps (the pop-up, or "Show new order"),
     # not just because the page is open on a phone nobody is looking at.
     if request.args.get('seen') == 'all':
-        for o in orders:
-            if o.status == 'placed' and not o.seen_at:
-                o.seen_at = datetime.utcnow()
+        for o in Order.query.filter_by(vendor_id=vendor.id, status='placed', seen_at=None).all():
+            o.seen_at = datetime.utcnow()
         db.session.commit()
         return redirect(url_for('vendor_dashboard'))
-    active = [o for o in orders if o.status not in ('delivered', 'cancelled')]
-    past = [o for o in orders if o.status in ('delivered', 'cancelled')][:10]
-    return render_template('vendor_dashboard.html', vendor=vendor, active=active, past=past,
+    active = (Order.query.filter_by(vendor_id=vendor.id)
+              .filter(Order.status.notin_(['delivered', 'cancelled']))
+              .order_by(Order.date_placed.desc()).all())
+    today = (Order.query.filter_by(vendor_id=vendor.id)
+             .filter(Order.date_placed >= kampala_day_start(), Order.status != 'cancelled').all())
+    snapshot = {
+        'orders_today': len(today),
+        'sales_today': sum(float(o.subtotal) for o in today),
+        'waiting': sum(1 for o in active if o.status == 'placed'),
+        'in_progress': sum(1 for o in active if o.status != 'placed'),
+    }
+    return render_template('seller/dashboard.html', vendor=vendor, active=active, snapshot=snapshot,
                            next_statuses=VENDOR_NEXT_STATUS)
 
 
-def read_product_form(product):
-    """Copy the product form onto a product. Returns an error message or None."""
-    name = request.form.get('name', '').strip()
-    try:
-        price = float(request.form.get('price', ''))
-    except ValueError:
-        price = -1
-    if not name or price < 0:
-        return 'Please give the product a name and a valid price.'
-    product.name = name[:150]
-    product.price = price
-    product.unit = request.form.get('unit', '').strip()[:40]
-    product.description = request.form.get('description', '').strip()
-    try:
-        new_url = upload_image(request.files.get('photo'), 'products')
-    except UploadError as e:
-        return str(e)
-    if new_url:
-        delete_image(product.image_url)
-        product.image_url = new_url
-    elif request.form.get('remove_photo'):
-        delete_image(product.image_url)
-        product.image_url = None
-    return None
+@app.route('/vendor/orders')
+@vendor_required
+def vendor_orders():
+    vendor = get_current_user().vendor
+    tab = request.args.get('tab', 'active')
+    q = request.args.get('q', '').strip()
+    query = Order.query.filter_by(vendor_id=vendor.id)
+    if q:
+        tab = 'search'          # searching looks through every order, whatever its status
+    elif tab == 'done':
+        query = query.filter(Order.status == 'delivered')
+    elif tab == 'cancelled':
+        query = query.filter(Order.status == 'cancelled')
+    elif tab != 'search':
+        tab = 'active'
+        query = query.filter(Order.status.notin_(['delivered', 'cancelled']))
+    if q:
+        num = re.sub(r'\D', '', q)
+        query = query.join(User, Order.customer_id == User.id).filter(db.or_(
+            User.name.ilike(f'%{q}%'), Order.phone.ilike(f'%{q}%'),
+            Order.id == (int(num) if num else -1)))
+    page = max(1, request.args.get('page', 1, type=int))
+    per_page = 20
+    total = query.count()
+    orders = query.order_by(Order.date_placed.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    counts = {
+        'active': Order.query.filter_by(vendor_id=vendor.id).filter(Order.status.notin_(['delivered', 'cancelled'])).count(),
+        'done': Order.query.filter_by(vendor_id=vendor.id, status='delivered').count(),
+        'cancelled': Order.query.filter_by(vendor_id=vendor.id, status='cancelled').count(),
+    }
+    return render_template('seller/orders.html', vendor=vendor, orders=orders, tab=tab, q=q, counts=counts,
+                           page=page, pages=max(1, -(-total // per_page)), next_statuses=VENDOR_NEXT_STATUS)
+
+
+@app.route('/vendor/products')
+@vendor_required
+def vendor_products():
+    vendor = get_current_user().vendor
+    return render_template('seller/products.html', vendor=vendor)
 
 
 @app.route('/vendor/poll')
@@ -1412,11 +1445,11 @@ def vendor_add_product():
     error = read_product_form(product)
     if error:
         flash(error, 'error')
-        return redirect(url_for('vendor_dashboard') + '#add-product')
+        return redirect(url_for('vendor_products') + '#add-product')
     db.session.add(product)
     db.session.commit()
     flash(f'"{product.name}" added.', 'success')
-    return redirect(url_for('vendor_dashboard') + '#products')
+    return redirect(url_for('vendor_products'))
 
 
 @app.route('/vendor/products/<int:product_id>/edit', methods=['GET', 'POST'])
@@ -1432,8 +1465,8 @@ def vendor_edit_product(product_id):
             return redirect(url_for('vendor_edit_product', product_id=product.id))
         db.session.commit()
         flash(f'"{product.name}" saved.', 'success')
-        return redirect(url_for('vendor_dashboard') + '#products')
-    return render_template('vendor_product.html', product=product)
+        return redirect(url_for('vendor_products'))
+    return render_template('vendor_product.html', product=product, vendor=vendor)
 
 
 @app.route('/vendor/products/<int:product_id>/delete', methods=['POST'])
@@ -1453,7 +1486,7 @@ def vendor_delete_product(product_id):
         cart['items'].pop(str(product_id))
         session['cart'] = cart
     flash(f'"{name}" deleted.', 'success')
-    return redirect(url_for('vendor_dashboard') + '#products')
+    return redirect(url_for('vendor_products'))
 
 
 @app.route('/vendor/products/<int:product_id>/toggle', methods=['POST'])
@@ -1463,7 +1496,7 @@ def vendor_toggle_product(product_id):
     product = Product.query.filter_by(id=product_id, vendor_id=vendor.id).first_or_404()
     product.in_stock = not product.in_stock
     db.session.commit()
-    return redirect(url_for('vendor_dashboard'))
+    return redirect(request.referrer or url_for('vendor_products'))
 
 
 @app.route('/vendor/toggle-open', methods=['POST'])
@@ -1473,7 +1506,7 @@ def vendor_toggle_open():
     vendor.is_open = not vendor.is_open
     db.session.commit()
     flash('Your shop is now open for orders.' if vendor.is_open else 'Your shop is now closed.', 'success')
-    return redirect(url_for('vendor_dashboard'))
+    return redirect(request.referrer or url_for('vendor_dashboard'))
 
 
 @app.route('/vendor/orders/<int:order_id>/status', methods=['POST'])
@@ -1484,15 +1517,22 @@ def vendor_order_status(order_id):
     new_status = request.form.get('status', '')
     if new_status not in VENDOR_NEXT_STATUS.get(order.status, []):
         flash('That status change is not allowed.', 'error')
-        return redirect(url_for('vendor_dashboard'))
+        return redirect(request.referrer or url_for('vendor_dashboard'))
     order.status = new_status
-    order.seen_at = order.seen_at or datetime.utcnow()
+    now = datetime.utcnow()
+    order.seen_at = order.seen_at or now
+    if new_status == 'accepted':
+        order.accepted_at = now
+    elif new_status == 'delivered':
+        order.delivered_at = now
+    elif new_status == 'cancelled':
+        order.cancelled_at = now
     if new_status == 'delivered' and order.payment_method not in PAY_NOW_METHODS:
         order.payment_status = 'paid'      # cash / mobile money collected at the door
     db.session.commit()
     alert_status(order)
     flash(f'{order.reference} marked as {order.status_label.lower()}.', 'success')
-    return redirect(url_for('vendor_dashboard'))
+    return redirect(request.referrer or url_for('vendor_dashboard'))
 
 
 # ── Trader subscriptions (Pesapal) ───────────────────────────

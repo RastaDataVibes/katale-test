@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://res.cloudinary.com">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5">
   {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -45,7 +45,7 @@
       {% if current_user %}
         <a href="{{ url_for('my_orders') }}" class="top-link">{{ icon('orders') }}<span>Orders</span></a>
         {% if current_user.vendor %}
-          <a href="{{ url_for('vendor_dashboard') }}" class="top-link">{{ icon('store-open') }}<span>My shop</span></a>
+          <a href="{{ url_for('vendor_dashboard') }}" class="top-link">{{ icon('store-open') }}<span>Seller center</span></a>
         {% endif %}
         {% if current_user.is_admin %}
           <a href="{{ url_for('admin_dashboard') }}" class="top-link">{{ icon('shield') }}<span>Admin</span></a>
@@ -69,7 +69,7 @@
           <a href="{{ url_for('my_orders') }}">{{ icon('orders', 18) }} My orders</a>
           <a href="{{ url_for('account') }}">{{ icon('user', 18) }} My account</a>
           {% if current_user.vendor %}
-            <a href="{{ url_for('vendor_dashboard') }}">{{ icon('store-open', 18) }} My shop</a>
+            <a href="{{ url_for('vendor_dashboard') }}">{{ icon('store-open', 18) }} Seller center</a>
             <a href="{{ url_for('vendor_subscription') }}">{{ icon('cash', 18) }} Subscription</a>
           {% else %}
             <a href="{{ url_for('vendor_apply') }}">{{ icon('shop', 18) }} Sell on {{ site_name }}</a>
@@ -134,6 +134,7 @@
 <template id="ico-bell">{{ icon('bell', 16) }}</template>
 <template id="ico-check">{{ icon('check', 16) }}</template>
 <template id="ico-bell-off">{{ icon('bell-off', 16) }}</template>
+{% block bottom_nav %}
 <nav class="bottom-nav" aria-label="Main">
   <a href="{{ url_for('home') }}" class="{{ 'on' if ep == 'home' }}">{{ icon('home', 22) }}<span>Home</span></a>
   <a href="{{ url_for('shops') }}" class="{{ 'on' if ep in ('shops', 'shop_detail') }}">{{ icon('shop', 22) }}<span>Shops</span></a>
@@ -142,13 +143,14 @@
   </a>
   <a href="{{ url_for('my_orders') }}" class="{{ 'on' if ep in ('my_orders', 'order_detail') }}">{{ icon('orders', 22) }}<span>Orders</span></a>
   {% if current_user and current_user.vendor %}
-    <a href="{{ url_for('vendor_dashboard') }}" class="{{ 'on' if ep.startswith('vendor') }}">{{ icon('store-open', 22) }}<span>My shop</span></a>
+    <a href="{{ url_for('vendor_dashboard') }}" class="{{ 'on' if ep.startswith('vendor') }}">{{ icon('store-open', 22) }}<span>Sell</span></a>
   {% elif current_user %}
     <a href="{{ url_for('vendor_apply') }}" class="{{ 'on' if ep == 'vendor_apply' }}">{{ icon('tag', 22) }}<span>Sell</span></a>
   {% else %}
     <a href="{{ url_for('login') }}" class="{{ 'on' if ep in ('login', 'register') }}">{{ icon('user', 22) }}<span>Log in</span></a>
   {% endif %}
 </nav>
+{% endblock %}
 
 <script>
   // Installable app: register the service worker and show "Install" when the browser allows it

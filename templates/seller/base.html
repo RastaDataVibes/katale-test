@@ -1,0 +1,109 @@
+{#
+  Seller center: the traders' own side of Katale.
+  Every seller page extends this. It gives the side menu (computers),
+  the bottom bar (phones), and the new-order ringing on every page.
+#}
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set ep = request.endpoint or '' %}
+{% set seller_menu = [
+  ('vendor_dashboard', 'Dashboard', 'grid', ('vendor_dashboard',)),
+  ('vendor_orders', 'Orders', 'orders', ('vendor_orders',)),
+  ('vendor_products', 'Products', 'basket', ('vendor_products', 'vendor_edit_product')),
+  ('vendor_settings', 'Shop settings', 'settings', ('vendor_settings',)),
+  ('vendor_subscription', 'Subscription', 'cash', ('vendor_subscription',)),
+] %}
+{% block body_class %}seller{% endblock %}
+{% block content %}
+<div class="seller-wrap">
+  <aside class="seller-side">
+    <div class="seller-shop">
+      <span class="seller-avatar">{% if vendor.image_url %}<img src="{{ sized(vendor.image_url, 96, 96) }}" alt="">{% else %}{{ vendor.name[0]|upper }}{% endif %}</span>
+      <div>
+        <strong>{{ vendor.name }}</strong>
+        <span class="seller-status">
+          {% if not vendor.is_approved %}<i class="dot warn"></i> Waiting for approval
+          {% elif not vendor.subscription_active %}<i class="dot off"></i> Hidden (unpaid)
+          {% elif vendor.is_open %}<i class="dot on"></i> Open
+          {% else %}<i class="dot off"></i> Closed{% endif %}
+        </span>
+      </div>
+    </div>
+    <nav class="seller-nav">
+      {% for endpoint, label, ico, active_on in seller_menu %}
+        <a href="{{ url_for(endpoint) }}" class="{{ 'on' if ep in active_on }}">{{ icon(ico, 19) }} <span>{{ label }}</span>
+          {% if endpoint == 'vendor_orders' %}<em class="nav-badge" data-unseen-badge hidden></em>{% endif %}</a>
+      {% endfor %}
+    </nav>
+    <div class="seller-side-foot">
+      <a href="{{ url_for('shop_detail', slug=vendor.slug) }}">{{ icon('shop', 17) }} View my shop page</a>
+      <a href="{{ url_for('home') }}">{{ icon('cart', 17) }} Switch to shopping</a>
+    </div>
+  </aside>
+
+  <section class="seller-main">
+    {# Mobile: horizontal tabs instead of the side menu #}
+    <nav class="seller-tabs">
+      {% for endpoint, label, ico, active_on in seller_menu %}
+        <a href="{{ url_for(endpoint) }}" class="{{ 'on' if ep in active_on }}">{{ label }}{% if endpoint == 'vendor_orders' %}<em class="nav-badge" data-unseen-badge hidden></em>{% endif %}</a>
+      {% endfor %}
+    </nav>
+
+    <button type="button" class="new-order-bar" id="new-order-bar" hidden>
+      <span class="nob-ico">{{ icon('bell', 22) }}</span><span>New order waiting</span><strong>Show new order {{ icon('arrow-right', 16) }}</strong>
+    </button>
+
+    {% block seller %}{% endblock %}
+  </section>
+</div>
+{% endblock %}
+
+{% block bottom_nav %}
+<nav class="bottom-nav" aria-label="Seller">
+  <a href="{{ url_for('vendor_dashboard') }}" class="{{ 'on' if ep == 'vendor_dashboard' }}">{{ icon('grid', 22) }}<span>Dashboard</span></a>
+  <a href="{{ url_for('vendor_orders') }}" class="{{ 'on' if ep == 'vendor_orders' }}"><span class="bn-ico">{{ icon('orders', 22) }}<i data-unseen-badge hidden></i></span><span>Orders</span></a>
+  <a href="{{ url_for('vendor_products') }}" class="{{ 'on' if ep in ('vendor_products', 'vendor_edit_product') }}">{{ icon('basket', 22) }}<span>Products</span></a>
+  <a href="{{ url_for('vendor_settings') }}" class="{{ 'on' if ep in ('vendor_settings', 'vendor_subscription') }}">{{ icon('settings', 22) }}<span>Settings</span></a>
+  <a href="{{ url_for('home') }}">{{ icon('cart', 22) }}<span>Shop</span></a>
+</nav>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// New orders: check every 15 seconds on every Seller center page. If an order hasn't been
+// looked at yet: big banner, badge on Orders, and (with sound on) the bell rings until tapped.
+(function () {
+  var pollUrl = "{{ url_for('vendor_poll') }}", seenUrl = "{{ url_for('vendor_dashboard', seen='all') }}";
+  var bar = document.getElementById('new-order-bar'), barText = bar.querySelector('span:nth-child(2)');
+  var bell = new Audio("{{ url_for('static', filename='sounds/order-bell.mp3') }}"); bell.preload = 'auto';
+  var ringTimer = null, soundOn = false, baseTitle = document.title;
+  try { soundOn = localStorage.getItem('katale_sound') === '1'; } catch (e) {}
+  window.kataleSound = {
+    on: function () { return soundOn; },
+    set: function (v) { soundOn = v; try { localStorage.setItem('katale_sound', v ? '1' : '0'); } catch (e) {} if (v) ringOnce(); else stopRinging(); }
+  };
+  function ringOnce() { try { bell.currentTime = 0; var p = bell.play(); if (p) p.catch(function () {}); } catch (e) {} }
+  function unlock() { bell.muted = true; var p = bell.play(); if (p) p.then(function () { bell.pause(); bell.currentTime = 0; bell.muted = false; }).catch(function () { bell.muted = false; }); }
+  function stopRinging() { clearInterval(ringTimer); ringTimer = null; }
+  document.addEventListener('click', function () { if (soundOn && !ringTimer) unlock(); }, { once: true });
+  bar.addEventListener('click', function () { stopRinging(); location.href = seenUrl; });
+
+  function check() {
+    fetch(pollUrl, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      var n = d.unseen || 0;
+      document.querySelectorAll('[data-unseen-badge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
+      if (n > 0) {
+        bar.hidden = false;
+        barText.textContent = n === 1 ? '1 new order waiting' : n + ' new orders waiting';
+        document.title = '(' + n + ') New order - Katale';
+        bar.classList.toggle('silent', !soundOn);
+        if (soundOn && !ringTimer) { ringOnce(); ringTimer = setInterval(ringOnce, 3000); }
+      } else { stopRinging(); bar.hidden = true; document.title = baseTitle; }
+    }).catch(function () {});
+  }
+  check();
+  setInterval(check, 15000);
+})();
+</script>
+{% block seller_scripts %}{% endblock %}
+{% endblock %}

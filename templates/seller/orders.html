@@ -1,0 +1,27 @@
+{% extends "seller/base.html" %}
+{% block title %}Orders | Seller center{% endblock %}
+{% block seller %}
+<div class="seller-head"><h1>Orders</h1>{% if q %}<a class="text-link" href="{{ url_for('vendor_orders') }}">Clear search</a>{% endif %}</div>
+<div class="tab-row">
+  <a class="chip {{ 'active' if tab == 'active' }}" href="{{ url_for('vendor_orders', tab='active') }}">Active <b>{{ counts.active }}</b></a>
+  <a class="chip {{ 'active' if tab == 'done' }}" href="{{ url_for('vendor_orders', tab='done') }}">Delivered <b>{{ counts.done }}</b></a>
+  <a class="chip {{ 'active' if tab == 'cancelled' }}" href="{{ url_for('vendor_orders', tab='cancelled') }}">Cancelled <b>{{ counts.cancelled }}</b></a>
+</div>
+<form class="hero-search" method="GET" style="max-width:none;margin:14px 0 18px" role="search">
+  {{ icon('search', 18) }}
+  <input type="search" name="q" value="{{ q }}" placeholder="Search by customer name, phone or order number">
+  <button class="btn btn-small" type="submit">Search</button>
+</form>
+{% for o in orders %}
+  {% include "seller/_order_card.html" %}
+{% else %}
+  <div class="empty"><span class="empty-ico">{{ icon('orders', 28) }}</span><p>{% if q %}No orders match "{{ q }}".{% else %}No {{ {'active':'active','done':'delivered','cancelled':'cancelled'}.get(tab, '') }} orders yet.{% endif %}</p></div>
+{% endfor %}
+{% if pages > 1 %}
+  <div class="pager">
+    {% if page > 1 %}<a class="btn btn-outline btn-small" href="{{ url_for('vendor_orders', tab=tab, q=q, page=page-1) }}">&larr; Newer</a>{% endif %}
+    <span class="muted">Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}<a class="btn btn-outline btn-small" href="{{ url_for('vendor_orders', tab=tab, q=q, page=page+1) }}">Older &rarr;</a>{% endif %}
+  </div>
+{% endif %}
+{% endblock %}

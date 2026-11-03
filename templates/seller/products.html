@@ -1,0 +1,34 @@
+{% extends "seller/base.html" %}
+{% block title %}Products | Seller center{% endblock %}
+{% block seller %}
+<div class="seller-head">
+  <div><h1>Products</h1><p class="muted">{{ vendor.products|length }} product{{ '' if vendor.products|length == 1 else 's' }} &middot; {{ vendor.products|selectattr('in_stock')|list|length }} in stock</p></div>
+  <a class="btn" href="#add-product">{{ icon('plus', 18) }} Add product</a>
+</div>
+{% for p in vendor.products %}
+  <div class="prod-row {{ 'hidden-prod' if not p.in_stock }}">
+    <div class="prod-thumb">{% if p.image_url %}<img src="{{ sized(p.image_url, 120, 120) }}" alt="" loading="lazy">{% else %}{{ icon('camera', 20) }}{% endif %}</div>
+    <div class="prod-info">
+      <strong>{{ p.name }}</strong>
+      <span class="muted">{{ p.price|ugx }}{% if p.unit %} / {{ p.unit }}{% endif %}</span>
+      {% if not p.in_stock %}<span class="tag off">Out of stock</span>{% endif %}
+    </div>
+    <div class="prod-actions">
+      <form action="{{ url_for('vendor_toggle_product', product_id=p.id) }}" method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-outline btn-small" type="submit">{{ 'Out of stock' if p.in_stock else 'Back in stock' }}</button>
+      </form>
+      <a class="btn btn-light btn-small" href="{{ url_for('vendor_edit_product', product_id=p.id) }}">Edit</a>
+    </div>
+  </div>
+{% else %}
+  <div class="empty"><span class="empty-ico">{{ icon('basket', 28) }}</span><p>No products yet. Add your first one below.</p></div>
+{% endfor %}
+<form class="card" action="{{ url_for('vendor_add_product') }}" method="POST" enctype="multipart/form-data" style="margin-top:24px" id="add-product">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h3>{{ icon('plus', 20) }} Add a product</h3>
+  {% set p = none %}
+  {% include "_product_fields.html" %}
+  <button class="btn" type="submit" style="margin-top:18px">Add product</button>
+</form>
+{% endblock %}
