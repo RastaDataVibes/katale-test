@@ -35,7 +35,9 @@
     box.setAttribute('data-ready', '1');
     var latIn = box.querySelector('.mp-lat'), lngIn = box.querySelector('.mp-lng');
     var hint = box.querySelector('.mp-hint span');
-    var addrId = box.dataset.addressInput, addrIn = addrId ? document.getElementById(addrId) : null;
+    // The address box sits BELOW the map, so it doesn't exist yet when this runs: find it when needed
+    var addrId = box.dataset.addressInput;
+    function addrIn() { return addrId ? document.getElementById(addrId) : null; }
     var hasPoint = box.dataset.lat !== '';
     var start = hasPoint ? [parseFloat(box.dataset.lat), parseFloat(box.dataset.lng)]
                          : [parseFloat(box.dataset.defaultLat), parseFloat(box.dataset.defaultLng)];
@@ -57,17 +59,25 @@
       lngIn.value = lng.toFixed(6);
       box.classList.add('mp-set');
       hint.textContent = 'Pin set. Drag it if it is not exactly right.';
-      if (label && addrIn) { addrIn.value = label; return; }
+      if (label && addrIn()) { addrIn().value = label; flash(addrIn()); return; }
       clearTimeout(lookupTimer);
       lookupTimer = setTimeout(function () { reverseLookup(lat, lng); }, 600);
     }
     function reverseLookup(lat, lng) {
-      if (!addrIn) return;
-      fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&lat=' + lat + '&lon=' + lng)
+      var input = addrIn();
+      if (!input) return;
+      var was = input.placeholder;
+      input.placeholder = 'Finding the place name…';
+      fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&addressdetails=0&lat=' + lat + '&lon=' + lng)
         .then(function (r) { return r.json(); })
-        .then(function (d) { if (d && d.display_name) addrIn.value = d.display_name.replace(/, Uganda$/, ''); })
-        .catch(function () {});
+        .then(function (d) {
+          if (d && d.display_name) { input.value = d.display_name.replace(/, Uganda$/, ''); flash(input); }
+        })
+        .catch(function () {})
+        .finally(function () { input.placeholder = was; });
     }
+    // Briefly highlight a box that was just filled in, so people notice it
+    function flash(el) { el.classList.add('just-filled'); setTimeout(function () { el.classList.remove('just-filled'); }, 1200); }
 
     marker.on('dragend', function () { var p = marker.getLatLng(); setPoint(p.lat, p.lng); });
     map.on('click', function (e) { setPoint(e.latlng.lat, e.latlng.lng); });
