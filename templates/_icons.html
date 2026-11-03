@@ -103,3 +103,12 @@
 {%- set m = {'Chicken & poultry':'chicken','Groceries':'basket','Fresh produce':'leaf','Meat & fish':'fish','Grains & cereals':'grain','Restaurant':'food','Pharmacy':'pill','Household':'home-goods'} -%}
 {{ icon(m.get(cat, 'dots'), size) }}
 {%- endmacro %}
+
+
+{# Star rating display, e.g. {{ stars(4.6) }}. Gold stars over grey ones, cut to the right width. #}
+{% macro stars(value, size=16) -%}
+<span class="stars" style="--pct:{{ ((value or 0) / 5 * 100)|round(1) }}%; --sz:{{ size }}px" role="img" aria-label="{{ value }} out of 5 stars">
+  <span class="stars-bg">{% for i in range(5) %}<svg viewBox="0 0 24 24"><path d="m12 3.8 2.5 5.1 5.6.8-4 4 .9 5.6-5-2.6-5 2.6.9-5.6-4-4 5.6-.8z"/></svg>{% endfor %}</span>
+  <span class="stars-fg">{% for i in range(5) %}<svg viewBox="0 0 24 24"><path d="m12 3.8 2.5 5.1 5.6.8-4 4 .9 5.6-5-2.6-5 2.6.9-5.6-4-4 5.6-.8z"/></svg>{% endfor %}</span>
+</span>
+{%- endmacro %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon, category_icon %}
+{% from "_icons.html" import icon, category_icon, stars %}
 {% block title %}{{ vendor.name }} | {{ site_name }}{% endblock %}
 {% block content %}
 <section>
@@ -19,6 +19,7 @@
       </div>
       <div class="shop-hero-body">
         <h1>{{ vendor.name }}</h1>
+        {% if vendor.rating %}<a class="rating-line big" href="#reviews">{{ stars(vendor.rating[0], 18) }} <strong>{{ vendor.rating[0] }}</strong> <span class="muted">{{ vendor.rating[1] }} review{{ '' if vendor.rating[1] == 1 else 's' }}</span></a>{% endif %}
         <div class="meta">
           <span>{{ icon('pin', 16) }} {{ vendor.area or 'Kampala' }}</span>
           {% if vendor.category %}<span>{{ category_icon(vendor.category, 16) }} {{ vendor.category }}</span>{% endif %}
@@ -72,6 +73,22 @@
     {% else %}
       <div class="empty"><span class="empty-ico">{{ icon('basket', 28) }}</span><p>This shop has not added any products yet.</p></div>
     {% endif %}
+    <h2 style="margin-top:36px" id="reviews">Reviews{% if vendor.rating %} <span class="muted" style="font-size:16px">{{ vendor.rating[0] }} average &middot; {{ vendor.rating[1] }} review{{ '' if vendor.rating[1] == 1 else 's' }}</span>{% endif %}</h2>
+    {% for r in reviews %}
+      <div class="review">
+        <div class="review-head">{{ stars(r.rating, 15) }} <strong>{{ r.public_name }}</strong> <span class="muted small">{{ r.created_at|local('%d %b %Y') }}</span>
+          {% if current_user and current_user.is_admin %}
+            <form method="POST" action="{{ url_for('admin_hide_review', review_id=r.id) }}" style="margin-left:auto">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-danger btn-small" type="submit">Hide (admin)</button></form>
+          {% endif %}
+        </div>
+        {% if r.comment %}<p>{{ r.comment }}</p>{% endif %}
+        {% if r.reply %}<div class="review-reply"><strong>{{ vendor.name }} replied:</strong> {{ r.reply }}</div>{% endif %}
+      </div>
+    {% else %}
+      <p class="muted">No reviews yet. Customers can rate their order after it is delivered.</p>
+    {% endfor %}
   </div>
 </section>
 {% endblock %}

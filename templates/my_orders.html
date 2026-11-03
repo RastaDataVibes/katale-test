@@ -9,7 +9,7 @@
       <a class="order-row" href="{{ url_for('order_detail', order_id=o.id) }}" style="display:block">
         <div class="order-head">
           <strong>{{ o.reference }} &middot; {{ o.vendor.name }}</strong>
-          <span class="tag {% if o.status == 'cancelled' %}off{% elif o.status != 'delivered' %}warn{% endif %}">{{ o.status_label }}</span>
+          <span>{% if o.status == 'delivered' and not o.review %}<span class="tag warn">Rate it</span> {% endif %}<span class="tag {% if o.status == 'cancelled' %}off{% elif o.status != 'delivered' %}warn{% endif %}">{{ o.status_label }}</span></span>
         </div>
         <span class="muted">{{ o.date_placed|local('%d %b %Y') }} &middot; {{ o.items|length }} item(s) &middot; {{ o.total|ugx }}</span>
       </a>

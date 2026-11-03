@@ -1,4 +1,4 @@
-{% from "_icons.html" import icon, category_icon %}
+{% from "_icons.html" import icon, category_icon, stars %}
 <a href="{{ url_for('shop_detail', slug=v.slug) }}" class="shop-card {{ 'closed' if not v.is_open }}">
   <div class="thumb">
     {% if v.image_url %}
@@ -12,6 +12,7 @@
   </div>
   <div class="card-body">
     <h3>{{ v.name }}</h3>
+    {% if v.rating is defined and v.rating %}<div class="rating-line">{{ stars(v.rating[0], 14) }} <strong>{{ v.rating[0] }}</strong> <span class="muted">({{ v.rating[1] }})</span></div>{% endif %}
     <div class="meta">
       <span>{{ icon('pin', 15) }} {{ v.area or 'Kampala' }}</span>
       {% if v.category %}<span>{{ category_icon(v.category, 15) }} {{ v.category }}</span>{% endif %}

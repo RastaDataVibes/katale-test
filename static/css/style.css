@@ -642,3 +642,34 @@ h4{font:700 15px var(--head); color:var(--green-dark); margin-bottom:6px;}
 .mp-pin.shop span{background:var(--gold);}
 @media (max-width:960px){ .chart-grid,.area-split{grid-template-columns:1fr;} .kpis-7{grid-template-columns:1fr 1fr;} .cols{padding-left:56px;} }
 .cols{padding-left:44px;} @media (max-width:960px){ .cols{padding-left:38px;} }
+
+/* ═══ Reviews ════════════════════════════════════════════ */
+.stars{position:relative; display:inline-block; line-height:0; vertical-align:-2px;}
+.stars svg{width:var(--sz); height:var(--sz); margin-right:1px;}
+.stars-bg svg{fill:#e4e1d9;}
+.stars-fg{position:absolute; inset:0; width:var(--pct); overflow:hidden; white-space:nowrap;}
+.stars-fg svg{fill:var(--gold);}
+.rating-line{display:flex; align-items:center; gap:6px; font-size:14px; margin:2px 0;}
+.rating-line.big{font-size:15px; margin:-2px 0 8px;}
+.review{border-bottom:1px solid var(--line); padding:14px 0;}
+.review.card{border:1px solid var(--line); padding:16px 18px; margin-bottom:12px;}
+.review-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;}
+.review p{margin:4px 0;}
+.review-reply{background:var(--green-tint); border-radius:var(--radius-sm); padding:10px 14px; font-size:14.5px; margin-top:8px;}
+.reply-form{margin-top:10px;}
+.reply-form textarea{min-height:64px;}
+.reply-form .btn{margin-top:8px;}
+.review-summary{display:grid; grid-template-columns:180px 1fr; gap:24px; align-items:center;}
+.rs-big{display:flex; flex-direction:column; align-items:flex-start; gap:6px;}
+.rs-big strong{font:800 44px var(--head); color:var(--green-dark); line-height:1;}
+.review-box h3{margin-bottom:8px;}
+/* star picker: five big tappable stars */
+.star-pick{display:inline-flex; flex-direction:row-reverse; gap:6px; margin:4px 0 12px;}
+.star-pick input{position:absolute; opacity:0; width:1px; height:1px;}
+.star-pick label{cursor:pointer; margin:0; line-height:0;}
+.star-pick svg{width:38px; height:38px; fill:#e4e1d9; transition:fill .15s, transform .1s;}
+.star-pick label:hover svg,.star-pick label:hover ~ label svg,
+.star-pick input:checked ~ label svg{fill:var(--gold);}
+.star-pick label:active svg{transform:scale(.9);}
+.star-pick input:focus-visible + label svg{outline:2px solid var(--green-mid); outline-offset:2px; border-radius:4px;}
+@media (max-width:720px){ .review-summary{grid-template-columns:1fr;} }

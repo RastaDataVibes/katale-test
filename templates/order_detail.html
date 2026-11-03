@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_map_picker.html" import map_view %}
-{% from "_icons.html" import icon %}
+{% from "_icons.html" import icon, stars %}
 {% block title %}{{ order.reference }} | {{ site_name }}{% endblock %}
 {% block scripts %}
 <script>
@@ -75,6 +75,22 @@
       {% if order.momo_charge and order.momo_charge > 0 %}<div><span>Mobile money charges</span><span>{{ order.momo_charge|ugx }}</span></div>{% endif %}
       <div class="total"><span>Total</span><span>{{ order.total|ugx }}</span></div>
     </div>
+    {% if order.status == 'delivered' and current_user.id == order.customer_id %}
+      {% set r = order.review %}
+      <form class="card review-box" id="review" method="POST" action="{{ url_for('review_order', order_id=order.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h3>{{ 'Your review' if r else 'How was your order from ' ~ order.vendor.name ~ '?' }}</h3>
+        <div class="star-pick" role="radiogroup" aria-label="Rating">
+          {% for s in range(5, 0, -1) %}
+            <input type="radio" id="star{{ s }}" name="rating" value="{{ s }}" {{ 'checked' if r and r.rating == s }}>
+            <label for="star{{ s }}" title="{{ s }} star{{ '' if s == 1 else 's' }}"><svg viewBox="0 0 24 24"><path d="m12 3.8 2.5 5.1 5.6.8-4 4 .9 5.6-5-2.6-5 2.6.9-5.6-4-4 5.6-.8z"/></svg></label>
+          {% endfor %}
+        </div>
+        <textarea name="comment" placeholder="Tell others about the food, the price and the delivery (optional)">{{ r.comment if r and r.comment else '' }}</textarea>
+        <button class="btn" type="submit" style="margin-top:12px">{{ 'Update review' if r else 'Send review' }}</button>
+        {% if r and r.reply %}<div class="review-reply" style="margin-top:14px"><strong>{{ order.vendor.name }} replied:</strong> {{ r.reply }}</div>{% endif %}
+      </form>
+    {% endif %}
     <div class="card" style="margin-top:24px">
       <h3>Delivering to</h3>
       <p>{{ order.delivery_address }}{% if order.delivery_landmark %}<br><span class="muted">Landmark: {{ order.delivery_landmark }}</span>{% endif %}<br>{{ order.phone }}</p>

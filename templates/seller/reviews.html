@@ -1,0 +1,65 @@
+{% extends "seller/base.html" %}
+{% from "_icons.html" import icon, stars %}
+{% block title %}Reviews | Seller center{% endblock %}
+{% block seller %}
+<div class="seller-head">
+  <div><h1>Reviews</h1><p class="muted">What customers say about {{ vendor.name }}. Your replies show on your shop page.</p></div>
+  <a class="btn btn-outline" href="{{ url_for('shop_detail', slug=vendor.slug) }}#reviews">{{ icon('shop', 16) }} See them on my shop page</a>
+</div>
+
+{% if total %}
+<div class="card chart-card review-summary">
+  <div class="rs-big">
+    <strong>{{ avg }}</strong>
+    {{ stars(avg, 20) }}
+    <span class="muted">{{ total }} review{{ '' if total == 1 else 's' }}</span>
+  </div>
+  <div class="rs-bars">
+    {% set most = (breakdown.values()|max) or 1 %}
+    {% for s, n in breakdown.items() %}
+      <div class="hbar" tabindex="0" data-tip="{{ s }} star{{ '' if s == 1 else 's' }}: {{ n }} review{{ '' if n == 1 else 's' }}">
+        <span class="hbar-label">{{ s }} star{{ '' if s == 1 else 's' }}</span>
+        <span class="hbar-track">{% if n %}<i style="width:{{ (n / most * 100)|round(1) }}%"></i>{% endif %}</span>
+        <span class="hbar-val">{{ n }}</span>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="tab-row" style="margin-bottom:14px">
+  <a class="chip {{ 'active' if show == 'all' }}" href="{{ url_for('vendor_reviews') }}">All <b>{{ total }}</b></a>
+  <a class="chip {{ 'active' if show == 'unreplied' }}" href="{{ url_for('vendor_reviews', show='unreplied') }}">Not replied <b>{{ unreplied }}</b></a>
+</div>
+{% endif %}
+
+{% for r in reviews %}
+  <div class="review card">
+    <div class="review-head">{{ stars(r.rating, 16) }} <strong>{{ r.public_name }}</strong>
+      <span class="muted small">{{ r.created_at|local('%d %b %Y') }} &middot; <a class="text-link" href="{{ url_for('order_detail', order_id=r.order_id) }}">{{ r.order.reference }}</a></span></div>
+    {% if r.comment %}<p>{{ r.comment }}</p>{% else %}<p class="muted">No comment, just stars.</p>{% endif %}
+    <form method="POST" action="{{ url_for('vendor_reply_review', review_id=r.id) }}" class="reply-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="reply{{ r.id }}">{{ 'Your public reply' if r.reply else 'Reply publicly' }}</label>
+      <textarea id="reply{{ r.id }}" name="reply" placeholder="{{ 'Thank them, or explain what you will do better' if r.rating >= 4 else 'Say sorry and explain how you will fix it. Other customers will read this.' }}">{{ r.reply or '' }}</textarea>
+      <button class="btn btn-small" type="submit">{{ 'Update reply' if r.reply else 'Post reply' }}</button>
+    </form>
+  </div>
+{% else %}
+  <div class="empty"><span class="empty-ico">{{ icon('star', 28) }}</span>
+    <p>{% if show == 'unreplied' %}You have replied to every review.{% else %}No reviews yet. After an order is delivered, the customer is asked to rate it.{% endif %}</p></div>
+{% endfor %}
+<div class="chart-tip" id="chart-tip" hidden></div>
+{% endblock %}
+{% block seller_scripts %}
+<script>
+(function () {
+  var tip = document.getElementById('chart-tip');
+  document.querySelectorAll('[data-tip]').forEach(function (el) {
+    function show() { tip.textContent = el.dataset.tip; tip.hidden = false; var r = el.getBoundingClientRect();
+      tip.style.left = Math.max(8, r.left + r.width / 2 - tip.offsetWidth / 2) + 'px'; tip.style.top = (r.top + window.scrollY - tip.offsetHeight - 8) + 'px'; }
+    el.addEventListener('mouseenter', show); el.addEventListener('focus', show);
+    el.addEventListener('mouseleave', function () { tip.hidden = true; }); el.addEventListener('blur', function () { tip.hidden = true; });
+  });
+})();
+</script>
+{% endblock %}

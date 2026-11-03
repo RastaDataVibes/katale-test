@@ -318,3 +318,29 @@ class PushSubscription(db.Model):
     p256dh = db.Column(db.String(200), nullable=False)
     auth = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Review(db.Model):
+    """A customer's stars + comment for one delivered order, and the shop's public reply."""
+    __tablename__ = 'reviews'
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, nullable=False)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False, index=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)                 # 1 to 5 stars
+    comment = db.Column(db.Text, nullable=True)
+    reply = db.Column(db.Text, nullable=True)                      # the shop's answer, shown publicly
+    replied_at = db.Column(db.DateTime, nullable=True)
+    hidden = db.Column(db.Boolean, default=False, nullable=False)  # admin can hide abusive reviews
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=True)
+
+    order = db.relationship('Order', backref=db.backref('review', uselist=False))
+    customer = db.relationship('User')
+    vendor = db.relationship('Vendor', backref=db.backref('reviews', lazy='dynamic'))
+
+    @property
+    def public_name(self):
+        """'Sarah Nakato' -> 'Sarah N.' (privacy: no full names on public pages)."""
+        parts = (self.customer.name or 'Customer').split()
+        return parts[0] + (f' {parts[1][0]}.' if len(parts) > 1 else '')

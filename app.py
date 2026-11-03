@@ -19,7 +19,7 @@ from flask_wtf.csrf import CSRFProtect, CSRFError
 import cloudinary
 import cloudinary.uploader
 from sqlalchemy import inspect, text
-from models import db, User, Vendor, Product, Order, OrderItem, Payment, Setting, PushSubscription, STATUS_LABELS, distance_km
+from models import db, User, Vendor, Product, Order, OrderItem, Payment, Setting, PushSubscription, Review, STATUS_LABELS, distance_km
 
 app = Flask(__name__)
 # Render sits in front of the app; this lets Flask know the real address is https://
@@ -345,12 +345,24 @@ def delivery_quote(vendor, loc):
             'fee': vendor.delivery_fee_for(km)}
 
 
+def ratings_for(vendor_ids):
+    """{vendor_id: (average, count)} for visible reviews, in one database question."""
+    if not vendor_ids:
+        return {}
+    rows = (db.session.query(Review.vendor_id, db.func.avg(Review.rating), db.func.count(Review.id))
+            .filter(Review.vendor_id.in_(vendor_ids), Review.hidden.is_(False))
+            .group_by(Review.vendor_id).all())
+    return {vid: (round(float(avg), 1), n) for vid, avg, n in rows}
+
+
 def shops_near(query, loc):
     """Attach distance + fee to each shop. If we know where the customer is,
     hide shops that can't reach them and put the nearest first."""
     vendors = [v for v in query.all() if v.subscription_active]   # unpaid shops are hidden
+    ratings = ratings_for([v.id for v in vendors])
     for v in vendors:
         v.quote = delivery_quote(v, loc)
+        v.rating = ratings.get(v.id)
     if not loc:
         return vendors, 0
     reachable = [v for v in vendors if v.quote['reaches']]
@@ -535,7 +547,9 @@ def shop_detail(slug):
     if not vendor.visible_to_customers and not can_preview:
         abort(404)
     products = Product.query.filter_by(vendor_id=vendor.id).order_by(Product.in_stock.desc(), Product.name).all()
-    return render_template('shop_detail.html', vendor=vendor, products=products,
+    vendor.rating = ratings_for([vendor.id]).get(vendor.id)
+    reviews = (vendor.reviews.filter_by(hidden=False).order_by(Review.created_at.desc()).limit(20).all())
+    return render_template('shop_detail.html', vendor=vendor, products=products, reviews=reviews,
                            quote=delivery_quote(vendor, get_location()))
 
 
@@ -898,7 +912,7 @@ STATUS_PUSH = {
     'accepted': ('Order accepted', '{shop} has accepted your order.'),
     'preparing': ('Being prepared', '{shop} is getting your order ready.'),
     'out_for_delivery': ('On the way', 'Your order from {shop} is on the way. Keep your phone near you.'),
-    'delivered': ('Delivered', 'Enjoy! Your receipt is in your email.'),
+    'delivered': ('Delivered', 'Enjoy! Tap to rate {shop}. Your receipt is in your email.'),
     'cancelled': ('Order cancelled', '{shop} could not take your order. You have not been charged.'),
 }
 
@@ -1214,6 +1228,35 @@ def vendor_order_payment(order_id):
                   url_for('order_detail', order_id=order.id, _external=True))
     flash(f'{order.reference}: {PAYMENT_STATUS_LABELS[order.payment_status].lower()}.', 'success')
     return redirect(request.referrer or url_for('vendor_dashboard'))
+
+
+@app.route('/orders/<int:order_id>/review', methods=['POST'])
+@login_required
+def review_order(order_id):
+    """Customer rates a delivered order (or changes their rating)."""
+    user = get_current_user()
+    order = Order.query.get_or_404(order_id)
+    if order.customer_id != user.id or order.status != 'delivered':
+        abort(404)
+    rating = request.form.get('rating', type=int)
+    if not rating or not 1 <= rating <= 5:
+        flash('Please tap the stars to choose a rating.', 'error')
+        return redirect(url_for('order_detail', order_id=order.id) + '#review')
+    review = order.review or Review(order_id=order.id, vendor_id=order.vendor_id, customer_id=user.id)
+    is_new = review.id is None
+    review.rating = rating
+    review.comment = request.form.get('comment', '').strip()[:1000] or None
+    if not is_new:
+        review.updated_at = datetime.utcnow()
+    db.session.add(review)
+    db.session.commit()
+    if is_new:
+        stars = '★' * rating + '☆' * (5 - rating)
+        in_background(push_to_user, order.vendor.owner_id, f'New review: {stars}',
+                      (review.comment or f'{review.public_name} rated order {order.reference}.')[:120],
+                      url_for('vendor_reviews', _external=True))
+    flash('Thank you for your review!', 'success')
+    return redirect(url_for('order_detail', order_id=order.id) + '#review')
 
 
 @app.route('/orders/<int:order_id>/cancel', methods=['POST'])
@@ -1565,6 +1608,49 @@ def vendor_insights():
         pins=pins, avg_km=(sum(dists) / len(dists)) if dists else None,
         grid=grid, grid_max=grid_max, blocks=[b[0] for b in blocks], day_names=DAY_NAMES, busiest=busiest,
         new_customers=len(ids) - returning, returning=returning, top_customers=top_customers, payments=payments)
+
+
+@app.route('/vendor/reviews')
+@vendor_required
+def vendor_reviews():
+    vendor = get_current_user().vendor
+    show = request.args.get('show', 'all')
+    q = vendor.reviews.filter_by(hidden=False)
+    if show == 'unreplied':
+        q = q.filter(Review.reply.is_(None))
+    reviews = q.order_by(Review.created_at.desc()).limit(100).all()
+    all_visible = vendor.reviews.filter_by(hidden=False).all()
+    breakdown = {s: sum(1 for r in all_visible if r.rating == s) for s in range(5, 0, -1)}
+    avg = round(sum(r.rating for r in all_visible) / len(all_visible), 1) if all_visible else None
+    unreplied = sum(1 for r in all_visible if not r.reply)
+    return render_template('seller/reviews.html', vendor=vendor, reviews=reviews, breakdown=breakdown,
+                           avg=avg, total=len(all_visible), unreplied=unreplied, show=show)
+
+
+@app.route('/vendor/reviews/<int:review_id>/reply', methods=['POST'])
+@vendor_required
+def vendor_reply_review(review_id):
+    vendor = get_current_user().vendor
+    review = Review.query.filter_by(id=review_id, vendor_id=vendor.id).first_or_404()
+    text = request.form.get('reply', '').strip()[:1000]
+    review.reply = text or None
+    review.replied_at = datetime.utcnow() if text else None
+    db.session.commit()
+    if text:
+        in_background(push_to_user, review.customer_id, f'{vendor.name} replied to your review', text[:120],
+                      url_for('shop_detail', slug=vendor.slug, _external=True) + '#reviews')
+    flash('Reply saved. Customers can see it on your shop page.' if text else 'Reply removed.', 'success')
+    return redirect(request.referrer or url_for('vendor_reviews'))
+
+
+@app.route('/admin/reviews/<int:review_id>/hide', methods=['POST'])
+@admin_required
+def admin_hide_review(review_id):
+    review = Review.query.get_or_404(review_id)
+    review.hidden = not review.hidden
+    db.session.commit()
+    flash('Review hidden.' if review.hidden else 'Review shown again.', 'success')
+    return redirect(request.referrer or url_for('shop_detail', slug=review.vendor.slug))
 
 
 @app.route('/vendor/products')
