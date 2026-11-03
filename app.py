@@ -19,7 +19,7 @@ from flask_wtf.csrf import CSRFProtect, CSRFError
 import cloudinary
 import cloudinary.uploader
 from sqlalchemy import inspect, text
-from models import db, User, Vendor, Product, Order, OrderItem, Payment, Setting, PushSubscription, Review, STATUS_LABELS, distance_km
+from models import db, User, Vendor, Product, Order, OrderItem, Payment, Setting, PushSubscription, Review, STATUS_LABELS, distance_km, travel_minutes, eta_range
 
 app = Flask(__name__)
 # Render sits in front of the app; this lets Flask know the real address is https://
@@ -232,6 +232,9 @@ NEW_COLUMNS = [
     ('orders', 'accepted_at', 'TIMESTAMP'),
     ('orders', 'delivered_at', 'TIMESTAMP'),
     ('orders', 'cancelled_at', 'TIMESTAMP'),
+    ('orders', 'preparing_at', 'TIMESTAMP'),
+    ('orders', 'out_at', 'TIMESTAMP'),
+    ('vendors', 'prep_minutes', 'INTEGER NOT NULL DEFAULT 20'),
 ]
 
 
@@ -342,7 +345,8 @@ def delivery_quote(vendor, loc):
         return {'known': False, 'reaches': True, 'km': None, 'fee': DELIVERY_FEE}
     km = vendor.distance_to(loc['lat'], loc['lng'])
     return {'known': True, 'km': km, 'reaches': km <= vendor.delivery_radius_km,
-            'fee': vendor.delivery_fee_for(km)}
+            'fee': vendor.delivery_fee_for(km),
+            'eta': eta_range((vendor.prep_minutes or 20) + travel_minutes(km))}
 
 
 def ratings_for(vendor_ids):
@@ -1173,7 +1177,22 @@ def order_detail(order_id):
     if order.vendor.owner_id == user.id and not order.seen_at:
         order.seen_at = datetime.utcnow()
         db.session.commit()
-    return render_template('order_detail.html', order=order)
+    return render_template('order_detail.html', order=order, steps=order_steps(order))
+
+
+def order_steps(order):
+    """Each tracker step with its Kampala time and how long it took since the step before."""
+    times = [('placed', order.date_placed), ('accepted', order.accepted_at), ('preparing', order.preparing_at),
+             ('out_for_delivery', order.out_at), ('delivered', order.delivered_at)]
+    out, prev = {}, None
+    for key, when in times:
+        if when:
+            mins = int(round((when - prev).total_seconds() / 60)) if prev else None
+            out[key] = {'time': (when + timedelta(hours=3)).strftime('%H:%M'),
+                        'took': (f'{mins} min' if mins is not None and mins < 120 else
+                                 (f'{mins // 60} h {mins % 60} min' if mins is not None else None))}
+            prev = when
+    return out
 
 
 @app.route('/orders/<int:order_id>/status.json')
@@ -1184,7 +1203,9 @@ def order_status_json(order_id):
     order = Order.query.get_or_404(order_id)
     if not (order.customer_id == user.id or order.vendor.owner_id == user.id or user.is_admin):
         abort(404)
-    return {'status': order.status, 'label': order.status_label}
+    return {'status': order.status, 'label': order.status_label,
+            'steps': order_steps(order),
+            'expected': (order.expected_at + timedelta(hours=3)).strftime('%H:%M') if order.expected_at else None}
 
 
 @app.route('/orders/<int:order_id>/paid', methods=['POST'])
@@ -1305,6 +1326,7 @@ def read_shop_form(vendor, fallback_phone=None):
     vendor.delivery_radius_km = number('delivery_radius_km', 5, 0.5, 30)
     vendor.delivery_base_fee = int(number('delivery_base_fee', 2000, 0, 50000))
     vendor.delivery_per_km = int(number('delivery_per_km', 1000, 0, 10000))
+    vendor.prep_minutes = int(number('prep_minutes', 20, 5, 180))
 
     # How customers can pay
     def digits(field, size):
@@ -1815,6 +1837,10 @@ def vendor_order_status(order_id):
     order.seen_at = order.seen_at or now
     if new_status == 'accepted':
         order.accepted_at = now
+    elif new_status == 'preparing':
+        order.preparing_at = now
+    elif new_status == 'out_for_delivery':
+        order.out_at = now
     elif new_status == 'delivered':
         order.delivered_at = now
     elif new_status == 'cancelled':

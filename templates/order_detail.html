@@ -20,8 +20,16 @@
   paint(box.dataset.status);
   var timer = setInterval(function () {
     fetch(box.dataset.url, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
-      if (d.status === 'cancelled') { location.reload(); return; }
+      if (d.status === 'cancelled' || d.status === 'delivered') { location.reload(); return; }
       if (d.status !== box.dataset.status) paint(d.status);
+      Object.keys(d.steps || {}).forEach(function (k) {
+        var el = box.querySelector('[data-key="' + k + '"] .t-time');
+        if (el) el.innerHTML = d.steps[k].time + (d.steps[k].took ? '<small>' + d.steps[k].took + '</small>' : '');
+      });
+      var eta = document.getElementById('eta-time');
+      if (eta && d.expected) eta.textContent = d.expected;
+      var note = document.getElementById('eta-note');
+      if (note && d.status === 'out_for_delivery') note.textContent = 'The rider is on the way';
       if (d.status === 'delivered') clearInterval(timer);
     }).catch(function () {});
   }, 20000);
@@ -34,14 +42,25 @@
     <h1>{{ order.reference }}</h1>
     <p class="muted" style="margin-bottom:20px">From <strong>{{ order.vendor.name }}</strong> &middot; {{ order.date_placed|local }}</p>
 
-    {% set steps = [('placed','Placed','orders'),('accepted','Accepted','check-circle'),('preparing','Preparing','basket'),('out_for_delivery','On the way','bike'),('delivered','Delivered','home')] %}
+    {% set step_list = [('placed','Placed','orders'),('accepted','Accepted','check-circle'),('preparing','Preparing','basket'),('out_for_delivery','On the way','bike'),('delivered','Delivered','home')] %}
+    <div class="eta-bar" id="eta-bar">
+      {% if order.status == 'delivered' %}
+        {{ icon('check-circle', 22) }} <span><strong>Delivered at {{ steps.delivered.time if steps.delivered else '' }}</strong>
+        {% if order.delivered_at %}<small>{{ ((order.delivered_at - order.date_placed).total_seconds() / 60)|round|int }} minutes after you ordered</small>{% endif %}</span>
+      {% elif order.status != 'cancelled' and order.expected_at %}
+        {{ icon('clock', 22) }} <span><strong>Expected by <b id="eta-time">{{ order.expected_at|local('%H:%M') }}</b></strong>
+        <small id="eta-note">{{ 'The rider is on the way' if order.status == 'out_for_delivery' else 'Includes ' ~ order.vendor.prep_minutes ~ ' min to prepare and the ride to you' }}</small></span>
+      {% endif %}
+    </div>
     <div class="tracker {{ 'cancelled' if order.status == 'cancelled' }}" id="tracker" data-status="{{ order.status }}"
          data-url="{{ url_for('order_status_json', order_id=order.id) }}">
       {% if order.status == 'cancelled' %}
         <div class="tracker-cancel">{{ icon('info', 20) }} This order was cancelled. You have not been charged.</div>
       {% else %}
-        {% for key, label, ico in steps %}
-          <div class="t-step" data-key="{{ key }}"><span class="t-dot">{{ icon(ico, 18) }}</span><span class="t-label">{{ label }}</span></div>
+        {% for key, label, ico in step_list %}
+          {% set s = steps.get(key) %}
+          <div class="t-step" data-key="{{ key }}"><span class="t-dot">{{ icon(ico, 18) }}</span><span class="t-label">{{ label }}</span>
+            <span class="t-time">{% if s %}{{ s.time }}{% if s.took %}<small>{{ s.took }}</small>{% endif %}{% endif %}</span></div>
         {% endfor %}
       {% endif %}
     </div>

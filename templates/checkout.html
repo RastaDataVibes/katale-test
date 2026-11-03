@@ -50,6 +50,7 @@
           <div id="charge-row" hidden><span>Mobile money charges</span><span id="charge-label"></span></div>
           <div class="total"><span>Total</span><span id="total-label">{% if cart.quote and cart.quote.fee is not none %}{{ (cart.subtotal + cart.quote.fee)|ugx }}{% else %}{{ cart.subtotal|ugx }}{% endif %}</span></div>
         </div>
+        <p class="eta-line" id="eta-line" {{ 'hidden' if not (cart.quote and cart.quote.eta) }}>{{ icon('clock', 17) }} Arrives in about <strong id="eta-range">{% if cart.quote and cart.quote.eta %}{{ cart.quote.eta[0] }}–{{ cart.quote.eta[1] }}{% endif %}</strong> min</p>
         <p class="muted" id="far-msg" style="color:var(--red);display:none"></p>
         <button class="btn btn-block" type="submit" style="margin-top:18px">Place order</button>
         <p class="muted center" style="margin-top:10px;font-size:13.5px">{{ icon('cash', 15) }} Your money goes straight to {{ cart.vendor.name }}</p>
@@ -67,6 +68,7 @@
                  'base': cart.vendor.delivery_base_fee, 'perKm': cart.vendor.delivery_per_km, 'name': cart.vendor.name,
                  'cmode': cart.vendor.momo_charge_mode, 'bands': cart.vendor.charge_bands,
                  'pct': cart.vendor.momo_charge_percent or 0, 'cmin': cart.vendor.momo_charge_min or 0,
+                 'prep': cart.vendor.prep_minutes or 20,
                  'fallbackFee': (cart.quote.fee if cart.quote and cart.quote.fee is not none else 0)}|tojson }};
   var subtotal = {{ cart.subtotal|float }};
   var latIn = document.querySelector('.mp-lat'), lngIn = document.querySelector('.mp-lng');
@@ -95,6 +97,10 @@
       fee = Math.ceil((shop.base + shop.perKm * d) / 500) * 500;
       document.getElementById('km-label').textContent = '(' + d.toFixed(1) + ' km)';
       document.getElementById('fee-label').textContent = ugx(fee);
+      // Same estimate as the server: preparation + ride at ~20 km/h + 5 min to find the gate, as a 10-min window
+      var mins = shop.prep + Math.round(d / 20 * 60) + 5, low = Math.max(5, Math.round(mins / 5) * 5);
+      document.getElementById('eta-range').textContent = low + '–' + (low + 10);
+      document.getElementById('eta-line').hidden = false;
       var far = document.getElementById('far-msg');
       if (d > shop.radius) { far.style.display = 'block'; far.textContent = shop.name + ' only delivers up to ' + shop.radius + ' km. Your pin is ' + d.toFixed(1) + ' km away.'; }
       else { far.style.display = 'none'; }

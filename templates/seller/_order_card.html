@@ -4,7 +4,8 @@
   <div class="order-head">
     <div>
       <a href="{{ url_for('order_detail', order_id=o.id) }}"><strong>{{ o.reference }}</strong></a> &middot; {{ o.customer.name }}
-      <div class="muted small">{{ o.date_placed|local('%d %b, %H:%M') }}{% if o.distance_km %} &middot; {{ '%.1f'|format(o.distance_km) }} km{% endif %}</div>
+      <div class="muted small">{{ o.date_placed|local('%d %b, %H:%M') }}{% if o.distance_km %} &middot; {{ '%.1f'|format(o.distance_km) }} km{% endif %}
+        {% if o.expected_at %} &middot; <span class="promise">{{ icon('clock', 14) }} promised by <strong>{{ o.expected_at|local('%H:%M') }}</strong></span>{% endif %}</div>
     </div>
     <span class="tag {{ 'off' if o.status == 'cancelled' else ('' if o.status == 'delivered' else 'warn') }}">{{ o.status_label }}</span>
   </div>

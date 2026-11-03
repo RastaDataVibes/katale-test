@@ -30,7 +30,7 @@
           <div class="quote-box {{ 'ok' if quote.reaches else 'far' }}">
             {{ icon('bike', 18) }}
             {% if quote.reaches %}
-              <span><strong>{{ '%.1f'|format(quote.km) }} km away</strong> · Delivery to you {{ quote.fee|ugx }}</span>
+              <span><strong>{{ '%.1f'|format(quote.km) }} km away</strong> · Delivery {{ quote.fee|ugx }} · Arrives in about <strong>{{ quote.eta[0] }}–{{ quote.eta[1] }} min</strong></span>
             {% else %}
               <span><strong>Too far to deliver to you.</strong> You are {{ '%.1f'|format(quote.km) }} km away; this shop delivers up to {{ '%g'|format(vendor.delivery_radius_km) }} km.</span>
             {% endif %}

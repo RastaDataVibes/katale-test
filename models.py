@@ -5,6 +5,23 @@ from datetime import datetime, timedelta
 
 db = SQLAlchemy()
 
+BODA_KMH = 20          # typical boda speed in Kampala traffic
+FIND_GATE_MIN = 5      # parking, finding the gate, calling the customer
+
+
+def travel_minutes(km):
+    """How long the ride takes for this distance."""
+    if km is None:
+        return 15
+    return int(round(km / BODA_KMH * 60)) + FIND_GATE_MIN
+
+
+def eta_range(minutes):
+    """25 -> (25, 35): a 10-minute window, rounded to 5 minutes, like delivery apps show."""
+    low = max(5, int(5 * round(minutes / 5)))
+    return low, low + 10
+
+
 def distance_km(lat1, lng1, lat2, lng2):
     """Straight-line distance in km between two points on the map (the 'haversine' formula)."""
     if None in (lat1, lng1, lat2, lng2):
@@ -74,6 +91,7 @@ class Vendor(db.Model):
     delivery_radius_km = db.Column(db.Float, default=5, nullable=False)    # how far they deliver
     delivery_base_fee = db.Column(db.Integer, default=2000, nullable=False)  # UGX, starting fee
     delivery_per_km = db.Column(db.Integer, default=1000, nullable=False)    # UGX for every km
+    prep_minutes = db.Column(db.Integer, default=20, nullable=False)         # usual time to get an order ready
 
     # How customers can pay this shop (money goes straight to the trader, never through Katale)
     accepts_cash = db.Column(db.Boolean, default=True, nullable=False)            # cash on delivery
@@ -244,13 +262,30 @@ class Order(db.Model):
     status = db.Column(db.String(20), default='placed', nullable=False)
     date_placed = db.Column(db.DateTime, default=datetime.utcnow)
     seen_at = db.Column(db.DateTime, nullable=True)   # when the trader first saw it (stops the WhatsApp backup)
-    accepted_at = db.Column(db.DateTime, nullable=True)    # step times, used by Insights
+    accepted_at = db.Column(db.DateTime, nullable=True)    # step times (tracker + Insights)
+    preparing_at = db.Column(db.DateTime, nullable=True)
+    out_at = db.Column(db.DateTime, nullable=True)         # left for delivery
     delivered_at = db.Column(db.DateTime, nullable=True)
     cancelled_at = db.Column(db.DateTime, nullable=True)
 
     customer = db.relationship('User', backref='orders')
     vendor = db.relationship('Vendor', backref='orders')
     items = db.relationship('OrderItem', backref='order', cascade='all, delete-orphan')
+
+    @property
+    def expected_at(self):
+        """When the order should arrive (UTC), updated as it moves along. None once finished."""
+        from datetime import timedelta as _td
+        if self.status in ('delivered', 'cancelled'):
+            return None
+        ride = _td(minutes=travel_minutes(self.distance_km))
+        if self.status == 'out_for_delivery' and self.out_at:
+            return self.out_at + ride
+        prep = _td(minutes=self.vendor.prep_minutes or 20)
+        start = self.preparing_at or self.accepted_at or self.date_placed
+        if self.status == 'preparing' and self.preparing_at:
+            return self.preparing_at + prep + ride
+        return start + prep + ride
 
     @property
     def maps_link(self):

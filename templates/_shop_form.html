@@ -45,6 +45,9 @@
   </div>
 </div>
 <div class="fee-example" id="fee-example"></div>
+<label for="prep_minutes">Usual time to get an order ready (minutes)</label>
+<input id="prep_minutes" name="prep_minutes" type="number" min="5" max="180" step="5" value="{{ f.prep_minutes if (f.prep_minutes is defined and f.prep_minutes) else 20 }}" style="max-width:200px">
+<p class="muted" style="font-size:13.5px;margin-top:6px">Customers see an estimated delivery time: this, plus the ride to them. Be honest; it builds trust.</p>
 
 <h3 class="form-section">{{ icon('cash', 20) }} How customers can pay you</h3>
 <p class="muted">Money goes straight to you. Katale never touches it and takes no cut.</p>
