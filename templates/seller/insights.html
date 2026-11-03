@@ -1,0 +1,190 @@
+{% extends "seller/base.html" %}
+{% from "_map_picker.html" import map_view %}
+{% block title %}Insights | Seller center{% endblock %}
+
+{# Small helper: show a number in its unit #}
+{% macro show(value, unit) -%}
+  {%- if value is none -%}–
+  {%- elif unit == 'ugx' -%}{{ value|ugx }}
+  {%- elif unit == 'pct' -%}{{ '%.0f'|format(value) }}%
+  {%- elif unit == 'mins' -%}{{ '%.0f'|format(value) }} min
+  {%- else -%}{{ '{:,.0f}'.format(value) }}{%- endif -%}
+{%- endmacro %}
+
+{# Axis labels: compact, e.g. 388K or 1.2M #}
+{% macro short(v) -%}
+  {%- if v >= 1000000 -%}{{ '%.1f'|format(v / 1000000) }}M{%- elif v >= 1000 -%}{{ '%.0f'|format(v / 1000) }}K{%- else -%}{{ '%.0f'|format(v) }}{%- endif -%}
+{%- endmacro %}
+
+{% block seller %}
+<div class="seller-head">
+  <div><h1>Insights</h1><p class="muted">How {{ vendor.name }} is doing: {{ periods[key]|lower }}.</p></div>
+</div>
+
+{# Filters: one row above the charts #}
+<div class="tab-row" style="margin-bottom:16px">
+  {% for k, label in periods.items() %}
+    <a class="chip {{ 'active' if k == key }}" href="{{ url_for('vendor_insights', period=k) }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+{# Headline numbers #}
+<div class="kpis kpis-7">
+  {% for label, value, change, unit, up_good in kpis %}
+    <div class="kpi">
+      <span>{{ label }}</span>
+      <strong>{{ show(value, unit) }}</strong>
+      {% if change is not none %}
+        {% set good = (change >= 0) == up_good %}
+        <em class="delta {{ 'good' if good else 'bad' }}">{{ '▲' if change >= 0 else '▼' }} {{ change|abs }}% <small>vs previous {{ 'month' if key == 'month' else key ~ ' days' }}</small></em>
+      {% elif label == 'Time to accept' %}<em class="delta"><small>from order to "Accepted"</small></em>
+      {% elif label == 'Cancelled' %}<em class="delta"><small>of all orders</small></em>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+{% if not kpis[1][1] %}
+  <div class="empty"><span class="empty-ico">{{ icon('grid', 28) }}</span>
+    <p>No orders in this period yet. Your insights fill in as orders come in.</p>
+    {% if key != '90' %}<a class="btn btn-light" href="{{ url_for('vendor_insights', period='90') }}">Look at the last 90 days</a>{% endif %}
+  </div>
+{% else %}
+
+{# ── Sales per day (single series: one green, no legend) ── #}
+{% set max_sales = (days|map(attribute='sales')|max) or 1 %}
+{% set best = days|sort(attribute='sales', reverse=true)|first %}
+<div class="card chart-card">
+  <div class="chart-head"><h3>Sales per day</h3><span class="muted">Best day: <strong>{{ best.label }}</strong>, {{ best.sales|ugx }}</span></div>
+  <div class="cols" style="--n:{{ days|length }}">
+    <div class="cols-grid"><span>{{ short(max_sales) }}</span><span>{{ short(max_sales / 2) }}</span><span>0</span></div>
+    {% for d in days %}
+      <div class="col" tabindex="0" data-tip="{{ d.label }}: {{ d.sales|ugx }} &middot; {{ d.orders }} order{{ '' if d.orders == 1 else 's' }}">
+        <i style="height:{{ (d.sales / max_sales * 100)|round(1) }}%"></i>
+        {% if days|length <= 10 or loop.last or (loop.index0 % 7 == 0 and loop.revindex0 > 3) %}<b>{{ d.label }}</b>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <details class="table-view"><summary>Show as a table</summary>
+    <table class="table"><thead><tr><th>Day</th><th class="num">Orders</th><th class="num">Sales</th></tr></thead><tbody>
+      {% for d in days|reverse %}<tr><td>{{ d.label }}</td><td class="num">{{ d.orders }}</td><td class="num">{{ d.sales|ugx }}</td></tr>{% endfor %}
+    </tbody></table>
+  </details>
+</div>
+
+<div class="chart-grid">
+  {# ── What sells most: ranked bars ── #}
+  <div class="card chart-card">
+    <div class="chart-head"><h3>What sells most</h3><span class="muted">by money earned</span></div>
+    {% set top_money = (top_products|map(attribute='money')|max) or 1 %}
+    {% for p in top_products %}
+      <div class="hbar" tabindex="0" data-tip="{{ p.name }}: {{ p.qty }} sold &middot; {{ p.money|ugx }}">
+        <span class="hbar-label">{{ p.name }} <small class="muted">&times;{{ p.qty }}</small></span>
+        <span class="hbar-track"><i style="width:{{ (p.money / top_money * 100)|round(1) }}%"></i></span>
+        <span class="hbar-val">{{ p.money|ugx }}</span>
+      </div>
+    {% endfor %}
+    {% if unsold %}
+      <p class="muted small" style="margin-top:14px">{{ icon('info', 15) }} Not sold in this period: {{ unsold[:6]|join(', ') }}{% if unsold|length > 6 %} and {{ unsold|length - 6 }} more{% endif %}. Try a better photo or price.</p>
+    {% endif %}
+  </div>
+
+  {# ── How customers paid ── #}
+  <div class="card chart-card">
+    <div class="chart-head"><h3>How customers paid</h3><span class="muted">money received</span></div>
+    {% set top_pay = (payments|map(attribute=1)|max) or 1 %}
+    {% for label, money in payments %}
+      <div class="hbar" tabindex="0" data-tip="{{ label }}: {{ money|ugx }}">
+        <span class="hbar-label">{{ label }}</span>
+        <span class="hbar-track"><i style="width:{{ (money / top_pay * 100)|round(1) }}%"></i></span>
+        <span class="hbar-val">{{ money|ugx }}</span>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Where customers come from ── #}
+<div class="card chart-card">
+  <div class="chart-head"><h3>Where your customers are</h3>
+    <span class="muted">{% if avg_km %}Average delivery: <strong>{{ '%.1f'|format(avg_km) }} km</strong>{% endif %}</span></div>
+  <div class="area-split">
+    <div>
+      {% set top_area = (top_areas|map(attribute=1)|max) or 1 %}
+      {% for name, n in top_areas %}
+        <div class="hbar" tabindex="0" data-tip="{{ name }}: {{ n }} order{{ '' if n == 1 else 's' }} ({{ (n / area_total * 100)|round|int }}%)">
+          <span class="hbar-label">{{ name }}</span>
+          <span class="hbar-track"><i style="width:{{ (n / top_area * 100)|round(1) }}%"></i></span>
+          <span class="hbar-val">{{ (n / area_total * 100)|round|int }}%</span>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="area-map">
+      {% set shop_pin = [{'lat': vendor.lat, 'lng': vendor.lng, 'label': vendor.name, 'kind': 'shop'}] if vendor.has_location else [] %}
+      {{ map_view(shop_pin + pins[:150], height=280) }}
+      <p class="muted small" style="margin-top:6px">Gold pin: your shop. Green pins: where orders were delivered.</p>
+    </div>
+  </div>
+</div>
+
+<div class="chart-grid">
+  {# ── When customers order: heatmap, one hue light→dark ── #}
+  <div class="card chart-card">
+    <div class="chart-head"><h3>When customers order</h3>{% if busiest %}<span class="muted">Busiest: <strong>{{ busiest }}</strong></span>{% endif %}</div>
+    <div class="heat" style="--cols:{{ blocks|length }}">
+      <span></span>{% for b in blocks %}<span class="hh">{{ b }}</span>{% endfor %}
+      {% for row in grid %}
+        <span class="hd">{{ day_names[loop.index0] }}</span>
+        {% set dn = day_names[loop.index0] %}
+        {% for n in row %}
+          <span class="cell" tabindex="0" style="--v:{{ (n / grid_max) if grid_max else 0 }}" data-tip="{{ dn }} {{ blocks[loop.index0]|lower }}: {{ n }} order{{ '' if n == 1 else 's' }}"></span>
+        {% endfor %}
+      {% endfor %}
+    </div>
+    <div class="heat-key"><span class="muted small">Fewer</span><i></i><span class="muted small">More orders</span></div>
+    <p class="muted small" style="margin-top:8px">Have stock and someone ready to deliver at your busiest times.</p>
+  </div>
+
+  {# ── Customers: new vs returning (tall segmented bar) + top customers ── #}
+  <div class="card chart-card">
+    <div class="chart-head"><h3>Your customers</h3></div>
+    {% set nc = new_customers + returning %}
+    {% if nc %}
+    <div class="seg" role="img" aria-label="{{ new_customers }} new and {{ returning }} returning customers">
+      {% if new_customers %}<span class="seg-a" style="flex:{{ new_customers }}" data-tip="New: {{ new_customers }}">{{ new_customers }} new</span>{% endif %}
+      {% if returning %}<span class="seg-b" style="flex:{{ returning }}" data-tip="Returning: {{ returning }}">{{ returning }} returning</span>{% endif %}
+    </div>
+    <div class="legend"><span><i class="sw-a"></i> New (first order with you)</span><span><i class="sw-b"></i> Returning (ordered before)</span></div>
+    {% endif %}
+    <h4 style="margin-top:16px">Top customers</h4>
+    <table class="table compact"><thead><tr><th>Customer</th><th class="num">Orders</th><th class="num">Spent</th></tr></thead><tbody>
+      {% for c in top_customers %}<tr><td>{{ c.name }}</td><td class="num">{{ c.orders }}</td><td class="num">{{ c.money|ugx }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</div>
+{% endif %}
+<div class="chart-tip" id="chart-tip" hidden></div>
+{% endblock %}
+
+{% block seller_scripts %}
+<script>
+// One tooltip for every chart mark (bars, columns, heatmap cells, segments): hover, tap or keyboard focus
+(function () {
+  var tip = document.getElementById('chart-tip');
+  function show(el) {
+    tip.textContent = el.dataset.tip.replace(/&middot;/g, '·');
+    tip.hidden = false;
+    var r = el.getBoundingClientRect();
+    var x = Math.min(window.innerWidth - tip.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - tip.offsetWidth / 2));
+    tip.style.left = x + 'px';
+    tip.style.top = (r.top + window.scrollY - tip.offsetHeight - 8) + 'px';
+  }
+  document.querySelectorAll('[data-tip]').forEach(function (el) {
+    el.addEventListener('mouseenter', function () { show(el); });
+    el.addEventListener('focus', function () { show(el); });
+    el.addEventListener('click', function () { show(el); });
+    el.addEventListener('mouseleave', function () { tip.hidden = true; });
+    el.addEventListener('blur', function () { tip.hidden = true; });
+  });
+})();
+</script>
+{% endblock %}

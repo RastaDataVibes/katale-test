@@ -10,6 +10,7 @@
   ('vendor_dashboard', 'Dashboard', 'grid', ('vendor_dashboard',)),
   ('vendor_orders', 'Orders', 'orders', ('vendor_orders',)),
   ('vendor_products', 'Products', 'basket', ('vendor_products', 'vendor_edit_product')),
+  ('vendor_insights', 'Insights', 'chart', ('vendor_insights',)),
   ('vendor_settings', 'Shop settings', 'settings', ('vendor_settings',)),
   ('vendor_subscription', 'Subscription', 'cash', ('vendor_subscription',)),
 ] %}
@@ -63,8 +64,8 @@
   <a href="{{ url_for('vendor_dashboard') }}" class="{{ 'on' if ep == 'vendor_dashboard' }}">{{ icon('grid', 22) }}<span>Dashboard</span></a>
   <a href="{{ url_for('vendor_orders') }}" class="{{ 'on' if ep == 'vendor_orders' }}"><span class="bn-ico">{{ icon('orders', 22) }}<i data-unseen-badge hidden></i></span><span>Orders</span></a>
   <a href="{{ url_for('vendor_products') }}" class="{{ 'on' if ep in ('vendor_products', 'vendor_edit_product') }}">{{ icon('basket', 22) }}<span>Products</span></a>
+  <a href="{{ url_for('vendor_insights') }}" class="{{ 'on' if ep == 'vendor_insights' }}">{{ icon('chart', 22) }}<span>Insights</span></a>
   <a href="{{ url_for('vendor_settings') }}" class="{{ 'on' if ep in ('vendor_settings', 'vendor_subscription') }}">{{ icon('settings', 22) }}<span>Settings</span></a>
-  <a href="{{ url_for('home') }}">{{ icon('cart', 22) }}<span>Shop</span></a>
 </nav>
 {% endblock %}
 

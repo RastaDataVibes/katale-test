@@ -1421,6 +1421,152 @@ def vendor_orders():
                            page=page, pages=max(1, -(-total // per_page)), next_statuses=VENDOR_NEXT_STATUS)
 
 
+# ── Seller center: Insights ──────────────────────────────────
+PERIODS = {'7': 'Last 7 days', '30': 'Last 30 days', '90': 'Last 90 days', 'month': 'This month'}
+DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+
+def period_range(key):
+    """(start, end, previous_start) in UTC for a period picked by the trader, in Kampala days."""
+    end = datetime.utcnow()
+    if key == 'month':
+        today = kampala_day_start()
+        local = today + timedelta(hours=3)
+        start = (local.replace(day=1) - timedelta(hours=3))
+        length = end - start
+    else:
+        days = int(key)
+        start = kampala_day_start(days - 1)
+        length = end - start
+    return start, end, start - length
+
+
+def pct_change(now, before):
+    if not before:
+        return None
+    return round((now - before) / before * 100)
+
+
+def area_of(address):
+    """'Plot 4, Ntinda Road, Ntinda, Kampala' -> 'Ntinda' (the neighbourhood customers recognise)."""
+    parts = [p.strip() for p in (address or '').split(',') if p.strip() and not re.search(r'\d', p)]
+    skip = {'kampala', 'uganda', 'central region', 'wakiso', 'kampala capital city', 'nakawa division',
+            'kawempe division', 'makindye division', 'rubaga division', 'central division'}
+    parts = [p for p in parts if p.lower() not in skip and 'division' not in p.lower()]
+    if not parts:
+        return 'Other'
+    return parts[1] if len(parts) > 1 and 'road' in parts[0].lower() else parts[0]
+
+
+@app.route('/vendor/insights')
+@vendor_required
+def vendor_insights():
+    vendor = get_current_user().vendor
+    key = request.args.get('period', '30')
+    if key not in PERIODS:
+        key = '30'
+    start, end, prev_start = period_range(key)
+
+    def orders_between(a, b):
+        return Order.query.filter_by(vendor_id=vendor.id).filter(Order.date_placed >= a, Order.date_placed < b).all()
+
+    now_all, prev_all = orders_between(start, end), orders_between(prev_start, start)
+    now = [o for o in now_all if o.status != 'cancelled']
+    prev = [o for o in prev_all if o.status != 'cancelled']
+
+    def totals(orders, all_orders):
+        sales = sum(float(o.subtotal) for o in orders)
+        accept_mins = [(o.accepted_at - o.date_placed).total_seconds() / 60 for o in orders if o.accepted_at]
+        return {
+            'sales': sales, 'orders': len(orders), 'avg': sales / len(orders) if orders else 0,
+            'delivery': sum(float(o.delivery_fee) for o in orders),
+            'customers': len({o.customer_id for o in orders}),
+            'cancel_rate': (len(all_orders) - len(orders)) / len(all_orders) * 100 if all_orders else 0,
+            'accept_mins': sum(accept_mins) / len(accept_mins) if accept_mins else None,
+        }
+    cur, old = totals(now, now_all), totals(prev, prev_all)
+    kpis = [
+        ('Sales', cur['sales'], pct_change(cur['sales'], old['sales']), 'ugx', True),
+        ('Orders', cur['orders'], pct_change(cur['orders'], old['orders']), 'num', True),
+        ('Average order', cur['avg'], pct_change(cur['avg'], old['avg']), 'ugx', True),
+        ('Customers', cur['customers'], pct_change(cur['customers'], old['customers']), 'num', True),
+        ('Delivery fees earned', cur['delivery'], pct_change(cur['delivery'], old['delivery']), 'ugx', True),
+        ('Cancelled', cur['cancel_rate'], None, 'pct', False),
+        ('Time to accept', cur['accept_mins'], None, 'mins', False),
+    ]
+
+    # Sales per day (Kampala days)
+    days = []
+    day = start
+    while day < end:
+        nxt = day + timedelta(days=1)
+        todays = [o for o in now if day <= o.date_placed < nxt]
+        days.append({'label': (day + timedelta(hours=3)).strftime('%d %b'),
+                     'sales': sum(float(o.subtotal) for o in todays), 'orders': len(todays)})
+        day = nxt
+
+    # What sells most
+    products = {}
+    for o in now:
+        for i in o.items:
+            p = products.setdefault(i.name, {'name': i.name, 'qty': 0, 'money': 0.0})
+            p['qty'] += i.quantity
+            p['money'] += float(i.line_total)
+    top_products = sorted(products.values(), key=lambda p: p['money'], reverse=True)[:8]
+    unsold = [p.name for p in vendor.products if p.name not in products]
+
+    # Where customers come from
+    areas = {}
+    for o in now:
+        a = area_of(o.delivery_address)
+        areas[a] = areas.get(a, 0) + 1
+    top_areas = sorted(areas.items(), key=lambda x: x[1], reverse=True)[:8]
+    pins = [{'lat': o.delivery_lat, 'lng': o.delivery_lng} for o in now if o.delivery_lat is not None]
+    dists = [o.distance_km for o in now if o.distance_km is not None]
+
+    # When customers order: day x time-of-day grid (Kampala time)
+    blocks = [('Morning', 6, 11), ('Midday', 11, 14), ('Afternoon', 14, 17), ('Evening', 17, 20), ('Night', 20, 24), ('Late', 0, 6)]
+    grid = [[0] * len(blocks) for _ in range(7)]
+    for o in now:
+        local = o.date_placed + timedelta(hours=3)
+        for bi, (_, h1, h2) in enumerate(blocks):
+            if h1 <= local.hour < h2:
+                grid[local.weekday()][bi] += 1
+    grid_max = max([max(r) for r in grid] + [0])
+    busiest = None
+    if grid_max:
+        d, b = max(((d, b) for d in range(7) for b in range(len(blocks))), key=lambda x: grid[x[0]][x[1]])
+        busiest = f'{DAY_NAMES[d]} {blocks[b][0].lower()}'
+
+    # Customers: new vs returning (returning = ordered from this shop before this period)
+    ids = {o.customer_id for o in now}
+    before_ids = {cid for (cid,) in db.session.query(Order.customer_id).filter(
+        Order.vendor_id == vendor.id, Order.date_placed < start, Order.status != 'cancelled').distinct()}
+    returning = len(ids & before_ids)
+    per_customer = {}
+    for o in now:
+        c = per_customer.setdefault(o.customer_id, {'name': o.customer.name, 'orders': 0, 'money': 0.0})
+        c['orders'] += 1
+        c['money'] += float(o.subtotal)
+    top_customers = sorted(per_customer.values(), key=lambda c: (c['orders'], c['money']), reverse=True)[:5]
+
+    # How customers paid
+    pay = {}
+    for o in now:
+        label = {'cash': 'Cash on delivery', 'mobile_money': 'Mobile money on delivery',
+                 'momo_merchant': 'MoMoPay / Airtel Pay', 'momo_number': 'Mobile money (paid now)',
+                 'momo_now': 'Mobile money (paid now)'}.get(o.payment_method, o.payment_method)
+        pay[label] = pay.get(label, 0) + float(o.total)
+    payments = sorted(pay.items(), key=lambda x: x[1], reverse=True)
+
+    return render_template(
+        'seller/insights.html', vendor=vendor, key=key, periods=PERIODS, kpis=kpis, days=days,
+        top_products=top_products, unsold=unsold, top_areas=top_areas, area_total=sum(areas.values()),
+        pins=pins, avg_km=(sum(dists) / len(dists)) if dists else None,
+        grid=grid, grid_max=grid_max, blocks=[b[0] for b in blocks], day_names=DAY_NAMES, busiest=busiest,
+        new_customers=len(ids) - returning, returning=returning, top_customers=top_customers, payments=payments)
+
+
 @app.route('/vendor/products')
 @vendor_required
 def vendor_products():
