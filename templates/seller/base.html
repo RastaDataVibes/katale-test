@@ -31,6 +31,11 @@
         </span>
       </div>
     </div>
+    <button type="button" class="sound-switch" id="sound-switch" role="switch" aria-checked="true">
+      <span class="ss-ico ss-on">{{ icon('sound', 18) }}</span><span class="ss-ico ss-off">{{ icon('bell-off', 18) }}</span>
+      <span class="ss-text"><b>Order sound</b><small class="ss-state">On</small></span>
+      <i class="ss-track"><i></i></i>
+    </button>
     <nav class="seller-nav">
       {% for endpoint, label, ico, active_on in seller_menu %}
         <a href="{{ url_for(endpoint) }}" class="{{ 'on' if ep in active_on }}">{{ icon(ico, 19) }} <span>{{ label }}</span>
@@ -54,7 +59,7 @@
     {# Browsers stay silent until the page is tapped once. This bar asks for that tap. #}
     <button type="button" class="sound-gate" id="sound-gate" hidden>
       <span class="nob-ico">{{ icon('bell', 20) }}</span>
-      <span><b>Order sounds are paused in this window.</b> Tap here once so you can hear new orders.</span>
+      <span class="sg-text"><b>Order sounds are paused in this window.</b> Tap here once so you can hear new orders.</span>
       <strong>Turn on sound</strong>
     </button>
 
@@ -103,7 +108,19 @@
   var htmlUnlocked = false;
   function canPlay() { return ctx ? ctx.state === 'running' : htmlUnlocked; }
 
-  function showGate() { gate.hidden = !(soundOn && !canPlay()); }
+  var gateText = gate.querySelector('.sg-text'), sw = document.getElementById('sound-switch');
+  // The bar shows when sound is switched OFF, or ON but blocked by the browser.
+  function showGate() {
+    var off = !soundOn, blocked = soundOn && !canPlay();
+    gate.hidden = !(off || blocked);
+    gate.classList.toggle('is-off', off);
+    gateText.innerHTML = off
+      ? '<b>Order sound is switched off.</b> You could miss new orders. Tap to switch it on.'
+      : '<b>Order sounds are paused in this window.</b> Tap here once so you can hear new orders.';
+    if (sw) { sw.classList.toggle('on', soundOn); sw.setAttribute('aria-checked', soundOn ? 'true' : 'false');
+      sw.querySelector('.ss-state').textContent = soundOn ? (canPlay() ? 'On' : 'On - tap page once') : 'Off'; }
+    document.dispatchEvent(new Event('katale-sound'));
+  }
   function unlock() {
     if (ctx && ctx.state !== 'running') { var r = ctx.resume(); if (r && r.then) r.then(afterUnlock, function () {}); }
     if (!htmlUnlocked) {
@@ -121,7 +138,8 @@
   ['pointerdown', 'touchstart', 'keydown', 'click'].forEach(function (ev) {
     document.addEventListener(ev, unlock, { capture: true, passive: true });
   });
-  gate.addEventListener('click', function () { unlock(); if (soundOn) setTimeout(ringOnce, 120); });
+  gate.addEventListener('click', function () { if (!soundOn) { window.kataleSound.set(true); return; } unlock(); setTimeout(ringOnce, 120); });
+  if (sw) sw.addEventListener('click', function () { window.kataleSound.set(!soundOn); });
 
   function ringOnce() {
     if (ctx && buf && ctx.state === 'running') {

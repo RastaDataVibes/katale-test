@@ -59,6 +59,7 @@
   var btn = document.getElementById('sound-btn');
   function label() { var on = window.kataleSound.on(); btn.innerHTML = on ? btn.dataset.iconOn + ' Sound on' : btn.dataset.iconOff + ' Turn on sound'; btn.classList.toggle('on', on); }
   label();
+  document.addEventListener('katale-sound', label);
   btn.addEventListener('click', function () { window.kataleSound.set(!window.kataleSound.on()); label(); });
   // Guide: open until notifications are on; tick finished steps
   var guide = document.getElementById('alert-guide');
