@@ -1,6 +1,7 @@
 """Katale full test: every form and button, as a customer, a trader and an admin, on a fresh database."""
 # How to run: python3 tests/full_test.py   (uses a throw-away test database; nothing real is touched or sent)
 import os, sys, io, re, json
+if os.path.exists('/tmp/katale_test.db'): os.remove('/tmp/katale_test.db')  # always start fresh
 os.environ.update(DATABASE_URL='sqlite:////tmp/katale_test.db', SECRET_KEY='t', ADMIN_EMAIL='admin@x.com',
                   CLOUDINARY_API_KEY='k', CLOUDINARY_API_SECRET='s', CLOUDINARY_CLOUD_NAME='dcostjy6h',
                   BREVO_API_KEY='b', MAIL_SENDER='k@x.com', PESAPAL_CONSUMER_KEY='k', PESAPAL_CONSUMER_SECRET='s', CRON_KEY='cron')
