@@ -690,3 +690,11 @@ input.just-filled{border-color:var(--green-bright); box-shadow:0 0 0 4px rgba(82
 .eta-line[hidden]{display:none;}
 .promise{display:inline-flex; align-items:center; gap:3px; color:var(--green-dark);}
 @media (max-width:560px){ .t-time{font-size:11px;} .t-time small{font-size:10.5px;} }
+
+/* "Tap once to hear order sounds" bar */
+.sound-gate{width:100%; display:flex; align-items:center; gap:12px; background:var(--green-dark); color:#fff; border:none; padding:14px 16px; border-radius:var(--radius); margin-bottom:12px; font:500 15px var(--body); text-align:left; cursor:pointer; box-shadow:0 8px 22px rgba(27,67,50,.25);}
+.sound-gate[hidden]{display:none;}
+.sound-gate span:nth-child(2){flex:1; line-height:1.4;}
+.sound-gate .nob-ico{color:var(--green-dark); animation:wiggle 1.4s ease-in-out infinite;}
+.sound-gate strong{background:var(--gold); color:var(--green-dark); padding:8px 14px; border-radius:50px; font-size:14px; white-space:nowrap;}
+@media (max-width:600px){.sound-gate strong{display:none;}}

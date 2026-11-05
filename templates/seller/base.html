@@ -51,6 +51,13 @@
       {% endfor %}
     </nav>
 
+    {# Browsers stay silent until the page is tapped once. This bar asks for that tap. #}
+    <button type="button" class="sound-gate" id="sound-gate" hidden>
+      <span class="nob-ico">{{ icon('bell', 20) }}</span>
+      <span><b>Order sounds are paused in this window.</b> Tap here once so you can hear new orders.</span>
+      <strong>Turn on sound</strong>
+    </button>
+
     <button type="button" class="new-order-bar" id="new-order-bar" hidden>
       <span class="nob-ico">{{ icon('bell', 22) }}</span><span>New order waiting</span><strong>Show new order {{ icon('arrow-right', 16) }}</strong>
     </button>
@@ -77,30 +84,93 @@
 (function () {
   var pollUrl = "{{ url_for('vendor_poll') }}", seenUrl = "{{ url_for('vendor_dashboard', seen='all') }}";
   var bar = document.getElementById('new-order-bar'), barText = bar.querySelector('span:nth-child(2)');
-  var bell = new Audio("{{ url_for('static', filename='sounds/order-bell.mp3') }}"); bell.preload = 'auto';
-  var ringTimer = null, soundOn = false, baseTitle = document.title;
-  try { soundOn = localStorage.getItem('katale_sound') === '1'; } catch (e) {}
+  var gate = document.getElementById('sound-gate');
+  var src = "{{ url_for('static', filename='sounds/order-bell.mp3') }}";
+  var bell = new Audio(src); bell.preload = 'auto';
+  var ringTimer = null, flashTimer = null, baseTitle = document.title, pending = 0;
+  // Sound is ON unless the trader switched it off (a new browser or Incognito window starts ON).
+  var soundOn = true;
+  try { soundOn = localStorage.getItem('katale_sound') !== '0'; } catch (e) {}
+
+  // Web Audio: once unlocked by one tap it keeps working for this page, also in Safari.
+  var AC = window.AudioContext || window.webkitAudioContext, ctx = null, buf = null;
+  if (AC) {
+    try { ctx = new AC(); } catch (e) { ctx = null; }
+    if (ctx) fetch(src).then(function (r) { return r.arrayBuffer(); }).then(function (a) {
+      return new Promise(function (ok, no) { ctx.decodeAudioData(a, ok, no); });
+    }).then(function (b) { buf = b; }).catch(function () {});
+  }
+  var htmlUnlocked = false;
+  function canPlay() { return ctx ? ctx.state === 'running' : htmlUnlocked; }
+
+  function showGate() { gate.hidden = !(soundOn && !canPlay()); }
+  function unlock() {
+    if (ctx && ctx.state !== 'running') { var r = ctx.resume(); if (r && r.then) r.then(afterUnlock, function () {}); }
+    if (!htmlUnlocked) {
+      bell.muted = true;
+      var p = bell.play();
+      if (p && p.then) p.then(function () { bell.pause(); bell.currentTime = 0; bell.muted = false; htmlUnlocked = true; afterUnlock(); },
+                             function () { bell.muted = false; });
+    }
+    setTimeout(afterUnlock, 50);
+  }
+  function afterUnlock() {
+    showGate();
+    if (canPlay() && pending && soundOn && !ringTimer) startRinging();
+  }
+  ['pointerdown', 'touchstart', 'keydown', 'click'].forEach(function (ev) {
+    document.addEventListener(ev, unlock, { capture: true, passive: true });
+  });
+  gate.addEventListener('click', function () { unlock(); if (soundOn) setTimeout(ringOnce, 120); });
+
+  function ringOnce() {
+    if (ctx && buf && ctx.state === 'running') {
+      try { var s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination); s.start(0); return; } catch (e) {}
+    }
+    try {
+      bell.currentTime = 0; var p = bell.play();
+      if (p && p.then) p.then(function () { htmlUnlocked = true; }, function () { htmlUnlocked = false; showGate(); });
+    } catch (e) {}
+  }
+  function startRinging() { ringOnce(); ringTimer = setInterval(ringOnce, 3000); }
+  function stopRinging() { clearInterval(ringTimer); ringTimer = null; }
+
+  // Backup when sound can't play: flashing tab title and a buzz on phones.
+  function startFlash() {
+    if (flashTimer) return;
+    var on = false;
+    flashTimer = setInterval(function () {
+      on = !on;
+      document.title = on ? '>>> NEW ORDER <<<' : '(' + pending + ') New order - Katale';
+    }, 1000);
+    try { if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]); } catch (e) {}
+  }
+  function stopFlash() { clearInterval(flashTimer); flashTimer = null; document.title = baseTitle; }
+
   window.kataleSound = {
     on: function () { return soundOn; },
-    set: function (v) { soundOn = v; try { localStorage.setItem('katale_sound', v ? '1' : '0'); } catch (e) {} if (v) ringOnce(); else stopRinging(); }
+    set: function (v) {
+      soundOn = v; try { localStorage.setItem('katale_sound', v ? '1' : '0'); } catch (e) {}
+      if (v) { unlock(); setTimeout(ringOnce, 120); } else stopRinging();
+      showGate();
+    }
   };
-  function ringOnce() { try { bell.currentTime = 0; var p = bell.play(); if (p) p.catch(function () {}); } catch (e) {} }
-  function unlock() { bell.muted = true; var p = bell.play(); if (p) p.then(function () { bell.pause(); bell.currentTime = 0; bell.muted = false; }).catch(function () { bell.muted = false; }); }
-  function stopRinging() { clearInterval(ringTimer); ringTimer = null; }
-  document.addEventListener('click', function () { if (soundOn && !ringTimer) unlock(); }, { once: true });
-  bar.addEventListener('click', function () { stopRinging(); location.href = seenUrl; });
+  bar.addEventListener('click', function () { stopRinging(); stopFlash(); location.href = seenUrl; });
+  setTimeout(showGate, 400);
 
   function check() {
     fetch(pollUrl, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
       var n = d.unseen || 0;
+      pending = n;
       document.querySelectorAll('[data-unseen-badge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
       if (n > 0) {
         bar.hidden = false;
         barText.textContent = n === 1 ? '1 new order waiting' : n + ' new orders waiting';
-        document.title = '(' + n + ') New order - Katale';
         bar.classList.toggle('silent', !soundOn);
-        if (soundOn && !ringTimer) { ringOnce(); ringTimer = setInterval(ringOnce, 3000); }
-      } else { stopRinging(); bar.hidden = true; document.title = baseTitle; }
+        startFlash();
+        showGate();
+        if (soundOn && !ringTimer) startRinging();
+      } else { stopRinging(); stopFlash(); bar.hidden = true; }
     }).catch(function () {});
   }
   check();
