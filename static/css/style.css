@@ -715,3 +715,12 @@ input.just-filled{border-color:var(--green-bright); box-shadow:0 0 0 4px rgba(82
 .ss-track i{position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left .2s; box-shadow:0 1px 3px rgba(0,0,0,.2);}
 .sound-switch.on .ss-track{background:var(--green-mid);}
 .sound-switch.on .ss-track i{left:19px;}
+
+/* "Install the Katale app" steps */
+.install-dialog{border:none; border-radius:20px; padding:26px 24px 20px; width:min(420px, calc(100vw - 32px)); box-shadow:0 24px 60px rgba(0,0,0,.25); position:fixed; inset:0; margin:auto; height:fit-content;}
+.install-dialog::backdrop{background:rgba(20,40,30,.45);}
+.install-dialog h3{font-family:var(--display); color:var(--green-dark); margin:10px 0 4px; font-size:22px;}
+.install-dialog ol{margin:12px 0 14px; padding-left:22px; display:flex; flex-direction:column; gap:10px; line-height:1.45;}
+.install-dialog .small{font-size:13px;}
+.id-logo img{border-radius:14px; display:block;}
+.id-close{position:absolute; top:12px; right:12px; background:var(--bg); border:none; width:34px; height:34px; border-radius:50%; display:grid; place-items:center; cursor:pointer; color:var(--muted);}

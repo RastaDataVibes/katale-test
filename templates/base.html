@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://res.cloudinary.com">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=9">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=10">
   {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -120,7 +120,7 @@
       </div>
     </div>
     <div class="footer-links">
-      <button type="button" class="install-btn" id="install-btn" hidden>{{ icon('phone', 16) }} Install the Katale app</button>
+      <button type="button" class="install-btn" id="install-btn" data-install hidden>{{ icon('phone', 16) }} Install the Katale app</button>
       <a href="{{ url_for('shops') }}">Browse shops</a>
       <a href="{{ url_for('vendor_apply') }}">Sell on {{ site_name }}</a>
       {% if not current_user %}<a href="{{ url_for('register') }}">Create an account</a>{% endif %}
@@ -128,6 +128,17 @@
   </div>
   <div class="footer-full footer-bottom">&copy; {{ current_year }} Gridcraft Limited. All rights reserved.</div>
 </footer>
+
+
+<dialog class="install-dialog" id="install-dialog" aria-labelledby="id-title">
+  <form method="dialog"><button class="id-close" aria-label="Close">{{ icon('close', 18) }}</button></form>
+  <span class="id-logo"><img src="{{ url_for('static', filename='img/gc-192.png') }}" alt="" width="52" height="52"></span>
+  <h3 id="id-title">Install the Katale app</h3>
+  <p class="muted">On your <b class="id-device"></b>:</p>
+  <ol></ol>
+  <p class="muted small">It's free, takes a few seconds and uses almost no space. Katale then opens like any other app.</p>
+  <form method="dialog"><button class="btn btn-primary" style="width:100%">Got it</button></form>
+</dialog>
 
 {# ── Phone bottom bar (only shows on small screens) ──── #}
 {% set ep = request.endpoint or '' %}
@@ -155,14 +166,35 @@
 <script>
   // Installable app: register the service worker and show "Install" when the browser allows it
   if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function () {}); }
+  // Install button: use the browser's own install pop-up when it offers one;
+  // otherwise (iPhone, Safari, or the pop-up isn't ready) show simple steps for this device.
   var installEvt = null;
-  window.addEventListener('beforeinstallprompt', function (e) {
-    e.preventDefault(); installEvt = e;
-    var b = document.getElementById('install-btn'); if (b) b.hidden = false;
-  });
-  document.getElementById('install-btn').addEventListener('click', function () {
-    if (!installEvt) return;
-    installEvt.prompt(); installEvt.userChoice.finally(function () { installEvt = null; document.getElementById('install-btn').hidden = true; });
+  var isInstalled = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; });
+  window.addEventListener('appinstalled', function () { document.querySelectorAll('[data-install]').forEach(function (b) { b.hidden = true; }); });
+  function installSteps() {
+    var ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (ios) return ['iPhone or iPad', ['Open Katale in <b>Safari</b>.', 'Tap the <b>Share</b> button (a square with an arrow pointing up) at the bottom of the screen.', 'Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.', 'Open Katale from the new icon on your home screen.']];
+    if (/SamsungBrowser/.test(ua)) return ['Samsung phone', ['Tap the <b>menu</b> (three lines) at the bottom right.', 'Tap <b>Add page to</b>, then <b>Home screen</b>.', 'Open Katale from the new icon on your home screen.']];
+    if (/Android/.test(ua)) return ['Android phone', ['Open Katale in <b>Chrome</b>.', 'Tap the <b>⋮</b> menu at the top right.', 'Tap <b>Add to Home screen</b> or <b>Install app</b>, then <b>Install</b>.', 'Open Katale from the new icon on your home screen.']];
+    if (/Safari/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) return ['Mac (Safari)', ['In the top menu, click <b>File</b>.', 'Click <b>Add to Dock</b>, then <b>Add</b>.', 'Open Katale from the Dock.']];
+    return ['Computer (Chrome or Edge)', ['Look at the right end of the web address bar for the <b>install</b> icon (a small screen with a down arrow) and click it.', 'No icon? Click the <b>⋮</b> menu, then <b>Cast, save and share</b> &gt; <b>Install page as app</b> (Edge: <b>Apps</b> &gt; <b>Install this site as an app</b>).', 'Click <b>Install</b>.']];
+  }
+  function showInstallSteps() {
+    var d = document.getElementById('install-dialog'), st = installSteps();
+    d.querySelector('.id-device').textContent = st[0];
+    d.querySelector('ol').innerHTML = st[1].map(function (x) { return '<li>' + x + '</li>'; }).join('');
+    if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+  }
+  window.kataleInstall = function () {
+    if (installEvt) {
+      try { installEvt.prompt(); installEvt.userChoice.finally(function () { installEvt = null; }); return; } catch (e) { installEvt = null; }
+    }
+    showInstallSteps();
+  };
+  document.querySelectorAll('[data-install]').forEach(function (b) {
+    if (isInstalled) { b.hidden = true; return; }
+    b.hidden = false; b.addEventListener('click', window.kataleInstall);
   });
 
   // ── Notifications on/off buttons ──
